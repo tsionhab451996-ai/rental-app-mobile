@@ -1,0 +1,34 @@
+[
+  {
+    "shopNumber": "A101",
+    "shopName": "Corner Store",
+    "floor": "Ground",
+    "rentAmount": 3500,
+    "dueDate": "2026-07-10",
+    "chatId": null
+  },
+  {
+    "shopNumber": "A102",
+    "shopName": "Green Grocers",
+    "floor": "Ground",
+    "rentAmount": 3000,
+    "dueDate": "2026-07-15",
+    "chatId": null
+  },
+  {
+    "shopNumber": "B201",
+    "shopName": "Tech Hub",
+    "floor": "First",
+    "rentAmount": 4500,
+    "dueDate": "2026-07-05",
+    "chatId": null
+  },
+  {
+    "shopNumber": "B202",
+    "shopName": "Fashion Boutique",
+    "floor": "First",
+    "rentAmount": 4000,
+    "dueDate": "2026-07-20",
+    "chatId": null
+  }
+]
