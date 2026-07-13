@@ -102,6 +102,7 @@ export default function ShopsScreen() {
 
       <ScrollView
         contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.tint} />
         }

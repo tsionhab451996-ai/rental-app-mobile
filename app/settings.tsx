@@ -4,6 +4,8 @@ import { File, Paths } from "expo-file-system";
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -375,7 +377,11 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.flex}
+      >
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <SectionHeader title="Profile" />
         <View style={[styles.card, { backgroundColor: colors.icon + "10" }]}>
           <InlineEditRow
@@ -562,12 +568,16 @@ export default function SettingsScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  flex: {
     flex: 1,
   },
   scrollContent: {

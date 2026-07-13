@@ -34,7 +34,6 @@ export default function RootLayout() {
             <Stack.Screen name="tenant-detail" options={{ title: 'Tenant' }} />
             <Stack.Screen name="payment-form" options={{ presentation: 'modal', title: 'Payment Details' }} />
             <Stack.Screen name="approvals" options={{ title: 'Approvals' }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
           </Stack>
           </TenantProvider>
         </ShopProvider>

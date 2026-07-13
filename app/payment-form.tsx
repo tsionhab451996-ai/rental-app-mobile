@@ -24,7 +24,7 @@ export default function PaymentFormScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { addPayment, updatePayment, getPayment } = usePayments();
-  const { tenants, updateTenant } = useTenants();
+  const { tenants, updateTenant, loading: tenantsLoading } = useTenants();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -61,10 +61,7 @@ export default function PaymentFormScreen() {
     }
   }, [existing]);
 
-  const unpaidTenants = useMemo(
-    () => tenants.filter((t) => !t.paid),
-    [tenants],
-  );
+  const availableTenants = useMemo(() => tenants, [tenants]);
 
   const handleSelectTenant = (tenantId: string) => {
     const tenant = tenants.find((t) => t.id === tenantId);
@@ -149,11 +146,22 @@ export default function PaymentFormScreen() {
               <View style={styles.tenantPicker}>
                 <Pressable
                   onPress={() => {
+                    if (tenantsLoading) {
+                      Alert.alert("Loading", "Please wait while tenants are loading...");
+                      return;
+                    }
+                    if (availableTenants.length === 0) {
+                      Alert.alert(
+                        "No tenants",
+                        "No tenants registered yet. Add a tenant first.",
+                      );
+                      return;
+                    }
                     Alert.alert(
                       "Select Tenant",
                       "Choose a tenant for this payment",
                       [
-                        ...unpaidTenants.map((t) => ({
+                        ...availableTenants.map((t) => ({
                           text: `${t.fullName} (Shop ${t.shopNumber})`,
                           onPress: () => handleSelectTenant(t.id),
                         })),

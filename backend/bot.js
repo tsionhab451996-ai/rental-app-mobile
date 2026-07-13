@@ -12,7 +12,7 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-const bot = new Telegraf(TOKEN);
+const bot = new Telegraf("8827608355:AAGgxdHX0NNDZeb6OmqrxvsHgHUPe4gx9oc");
 // Minimal HTTP API so the mobile app can register reminders programmatically
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -23,7 +23,7 @@ appServer.use(bodyParser.json());
 const HTTP_PORT = process.env.BOT_HTTP_PORT || 3000;
 
 // Data persistence for reminders
-const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
+const DATA_DIR = path.resolve(__dirname, "data");
 const REMINDERS_FILE = path.join(DATA_DIR, "reminders.json");
 let reminders = [];
 

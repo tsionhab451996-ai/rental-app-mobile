@@ -13,7 +13,7 @@
  *   });
  */
 
-const API_BASE = "http://localhost:3000/api";
+let API_BASE = "http://localhost:3000/api";
 
 export type BackendShop = {
   shopNumber: string;
@@ -54,5 +54,5 @@ export async function fetchShopByNumber(
 }
 
 export function setApiBaseUrl(url: string) {
-  (module as any).API_BASE = url;
+  API_BASE = url;
 }

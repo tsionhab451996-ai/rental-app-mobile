@@ -1,14 +1,14 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 
@@ -18,6 +18,9 @@ import { usePayments } from "@/contexts/PaymentContext";
 import { useShops } from "@/contexts/ShopContext";
 import { useTenants } from "@/contexts/TenantContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+
+const DEFAULT_BOT_TOKEN = "8827608355:AAEyPcgE_L6hi2qhjJk6gOcLrz2dTK2jWcM";
+const REMINDER_DAYS_BEFORE = 3;
 
 const daysUntilDue = (dueDate: string) => {
   return Math.ceil(
@@ -37,8 +40,6 @@ export default function HomeScreen() {
   const { tenants } = useTenants();
   const { payments } = usePayments();
 
-  const [botToken, setBotToken] = useState("");
-  const [botServer, setBotServer] = useState("");
   const [notificationsToday, setNotificationsToday] = useState(0);
 
   const dashboardStats = useMemo(() => {
@@ -74,50 +75,13 @@ export default function HomeScreen() {
     };
   }, [tenants, notificationsToday, shops, payments]);
 
-  useEffect(() => {
-    const loadBotData = async () => {
-      try {
-        const [token, server] = await Promise.all([
-          AsyncStorage.getItem("@rentalapp/botToken"),
-          AsyncStorage.getItem("@rentalapp/botServer"),
-        ]);
-        if (token) setBotToken(token);
-        if (server) setBotServer(server);
-      } catch {
-        // ignore
-      }
-    };
-    loadBotData();
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.setItem("@rentalapp/botToken", botToken).catch(() => {});
-  }, [botToken]);
-
-  useEffect(() => {
-    AsyncStorage.setItem("@rentalapp/botServer", botServer).catch(() => {});
-  }, [botServer]);
-
   const sendTelegramReminder = async (tenant: {
     fullName: string;
     rentAmount: number;
     dueDate: string;
     telegramUsername: string;
   }) => {
-    if (!botToken.trim()) {
-      Alert.alert(
-        "Bot token required",
-        "Enter your Telegram bot token to send reminders.",
-      );
-      return;
-    }
-    if (!tenant.telegramUsername.trim()) {
-      Alert.alert(
-        "Username required",
-        "This tenant needs a Telegram username to receive reminders.",
-      );
-      return;
-    }
+    if (!tenant.telegramUsername.trim()) return;
 
     const days = daysUntilDue(tenant.dueDate);
     const message = `Hello ${tenant.fullName},\nYour rental payment of ${formatCurrency(tenant.rentAmount)} is due on ${new Date(tenant.dueDate).toLocaleDateString()}. ${
@@ -128,7 +92,7 @@ export default function HomeScreen() {
 
     try {
       const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendMessage`,
+        `https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/sendMessage`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -140,35 +104,23 @@ export default function HomeScreen() {
       );
       const result = await response.json();
       if (result.ok) {
-        Alert.alert("Reminder sent", `Message delivered to ${tenant.fullName}.`);
         setNotificationsToday((n) => n + 1);
-      } else {
-        Alert.alert(
-          "Telegram error",
-          result.description || "Unable to send the reminder.",
-        );
       }
     } catch {
-      Alert.alert(
-        "Network error",
-        "Unable to reach Telegram. Check your bot token and internet connection.",
-      );
+      // silent fail for auto-reminders
     }
   };
 
-  const sendBulkReminder = () => {
+  useEffect(() => {
     const eligible = tenants.filter(
-      (t) => !t.paid && t.telegramUsername.trim(),
+      (t) =>
+        !t.paid &&
+        t.telegramUsername.trim() &&
+        daysUntilDue(t.dueDate) <= REMINDER_DAYS_BEFORE,
     );
-    if (eligible.length === 0) {
-      Alert.alert(
-        "No reminders",
-        "No unpaid tenants with Telegram usernames.",
-      );
-      return;
-    }
     eligible.forEach((t) => sendTelegramReminder(t));
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenants]);
 
   const isWide = screenWidth > 500;
   const greeting = (() => {
@@ -179,10 +131,15 @@ export default function HomeScreen() {
   })();
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.flex}
+    >
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       <LinearGradient
         colors={isDark ? ["#1E3A5F", "#0F172A"] : ["#2563EB", "#1D4ED8"]}
@@ -269,52 +226,18 @@ export default function HomeScreen() {
             darkMode={isDark}
           />
         </Link>
-        <QuickAction
-          icon="notifications"
-          label="Remind All"
-          color="#DC2626"
-          darkMode={isDark}
-          onPress={sendBulkReminder}
-        />
+        <Link href="/approvals" asChild>
+          <QuickAction
+            icon="check-circle"
+            label="Approvals"
+            color="#0891B2"
+            darkMode={isDark}
+          />
+        </Link>
       </View>
 
-      <ThemedText style={styles.sectionLabel}>Telegram Bot</ThemedText>
-      <View style={[styles.botCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <ThemedText style={styles.botDescription}>
-          Configure your bot to send automatic rent reminders to tenants.
-        </ThemedText>
-        <TextInput
-          style={[
-            styles.botInput,
-            {
-              color: colors.text,
-              borderColor: colors.border,
-              backgroundColor: isDark ? "#0F172A" : "#F1F5F9",
-            },
-          ]}
-          placeholder="Telegram bot token"
-          placeholderTextColor={colors.icon}
-          value={botToken}
-          onChangeText={setBotToken}
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={[
-            styles.botInput,
-            {
-              color: colors.text,
-              borderColor: colors.border,
-              backgroundColor: isDark ? "#0F172A" : "#F1F5F9",
-            },
-          ]}
-          placeholder="Bot server URL (http://192.168.x.x:3000)"
-          placeholderTextColor={colors.icon}
-          value={botServer}
-          onChangeText={setBotServer}
-          autoCapitalize="none"
-        />
-      </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -367,7 +290,7 @@ function QuickAction({
       onPress={onPress}
     >
       <View style={[styles.quickActionIconBg, { backgroundColor: color + "18" }]}>
-        <ThemedText style={[styles.quickActionIcon, { color }]}>{icon === "store" ? "🏪" : icon === "people" ? "👥" : icon === "credit-card" ? "💳" : "📨"}</ThemedText>
+        <ThemedText style={[styles.quickActionIcon, { color }]}>{icon === "store" ? "🏪" : icon === "people" ? "👥" : icon === "credit-card" ? "💳" : icon === "check-circle" ? "✅" : "📨"}</ThemedText>
       </View>
       <ThemedText style={[styles.quickActionLabel, { color: darkMode ? "#F1F5F9" : "#0F172A" }]}>
         {label}
@@ -378,6 +301,9 @@ function QuickAction({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  flex: {
     flex: 1,
   },
   content: {
@@ -501,24 +427,5 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  botCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 18,
-    gap: 12,
-    borderWidth: 1,
-  },
-  botDescription: {
-    fontSize: 14,
-    opacity: 0.6,
-    marginBottom: 2,
-  },
-  botInput: {
-    height: 48,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 15,
   },
 });

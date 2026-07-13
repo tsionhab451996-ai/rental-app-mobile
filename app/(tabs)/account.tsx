@@ -38,6 +38,11 @@ export default function AccountScreen() {
       icon: "🔒",
       onPress: () => router.push("/change-password" as Href),
     },
+    {
+      label: "Approvals",
+      icon: "✅",
+      onPress: () => router.push("/approvals" as Href),
+    },
   ];
 
   return (
