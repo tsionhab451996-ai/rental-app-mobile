@@ -12,6 +12,8 @@ export type NotificationSettings = {
   enableTelegram: boolean;
   enableSMS: boolean;
   reminderTime: string;
+  telegramBotToken: string;
+  telegramBotUsername: string;
   reminderDays: {
     sevenDaysBefore: boolean;
     threeDaysBefore: boolean;
@@ -69,11 +71,13 @@ const defaultSettings: Settings = {
     email: "",
   },
   notifications: {
-    enableTelegram: false,
+    enableTelegram: true,
     enableSMS: false,
     reminderTime: "09:00",
+    telegramBotToken: "8827608355:AAEyPcgE_L6hi2qhjJk6gOcLrz2dTK2jWcM",
+    telegramBotUsername: "",
     reminderDays: {
-      sevenDaysBefore: false,
+      sevenDaysBefore: true,
       threeDaysBefore: true,
       oneDayBefore: true,
       dueDate: true,

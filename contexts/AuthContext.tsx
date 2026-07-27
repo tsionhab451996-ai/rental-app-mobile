@@ -70,10 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredData() {
     try {
-      const [userJson, remembered] = await Promise.all([
+      const [userJson, remembered, credsJson] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.user),
         AsyncStorage.getItem(STORAGE_KEYS.rememberedEmail),
+        AsyncStorage.getItem(STORAGE_KEYS.credentials),
       ]);
+      if (!credsJson) {
+        // Initialize default owner credentials for first-time use
+        const defaultOwner = [{ email: "owner@rentalapp.com", username: "owner", password: "admin123" }];
+        await AsyncStorage.setItem(STORAGE_KEYS.credentials, JSON.stringify(defaultOwner));
+      }
       if (userJson) {
         setUser(JSON.parse(userJson));
       }
@@ -93,14 +99,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string,
       rememberMe: boolean
     ) {
+      const cleanInput = emailOrUsername.trim().toLowerCase();
       const credentialsJson = await AsyncStorage.getItem(STORAGE_KEYS.credentials);
-      if (!credentialsJson) {
-        throw new Error("No account found. Please register first.");
-      }
-      const credentials = JSON.parse(credentialsJson);
+      const credentials = credentialsJson ? JSON.parse(credentialsJson) : [];
       const match = credentials.find(
         (c: { email: string; username: string; password: string }) =>
-          (c.email === emailOrUsername || c.username === emailOrUsername) &&
+          (c.email.toLowerCase() === cleanInput || c.username.toLowerCase() === cleanInput) &&
           c.password === password
       );
       if (!match) {
@@ -109,8 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const loggedInUser: User = { email: match.email, username: match.username };
       await AsyncStorage.setItem(STORAGE_KEYS.user, JSON.stringify(loggedInUser));
       if (rememberMe) {
-        await AsyncStorage.setItem(STORAGE_KEYS.rememberedEmail, emailOrUsername);
-        setRememberedEmail(emailOrUsername);
+        await AsyncStorage.setItem(STORAGE_KEYS.rememberedEmail, emailOrUsername.trim());
+        setRememberedEmail(emailOrUsername.trim());
       } else {
         await AsyncStorage.removeItem(STORAGE_KEYS.rememberedEmail);
         setRememberedEmail(null);
@@ -122,13 +126,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async function register(email: string, username: string, password: string) {
-      const newUser = { email, username, password };
+      const cleanEmail = email.trim();
+      const cleanUsername = username.trim();
       const existingJson = await AsyncStorage.getItem(STORAGE_KEYS.credentials);
       const existing = existingJson ? JSON.parse(existingJson) : [];
+
+      const duplicate = existing.find(
+        (c: { email: string; username: string }) =>
+          c.email.toLowerCase() === cleanEmail.toLowerCase() ||
+          c.username.toLowerCase() === cleanUsername.toLowerCase()
+      );
+      if (duplicate) {
+        throw new Error("An account with this email or username already exists.");
+      }
+
+      const newUser = { email: cleanEmail, username: cleanUsername, password };
       existing.push(newUser);
       await AsyncStorage.setItem(STORAGE_KEYS.credentials, JSON.stringify(existing));
 
-      const loggedInUser: User = { email, username };
+      const loggedInUser: User = { email: cleanEmail, username: cleanUsername };
       await AsyncStorage.setItem(STORAGE_KEYS.user, JSON.stringify(loggedInUser));
       setUser(loggedInUser);
     },

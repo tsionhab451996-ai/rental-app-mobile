@@ -125,12 +125,14 @@ export default function PaymentFormScreen() {
         options={{ title: isEditing ? "Edit Payment" : "Record Payment" }}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
         >
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Tenant</ThemedText>

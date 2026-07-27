@@ -11,7 +11,9 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useTenants } from "@/contexts/TenantContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { sendTelegramMessage, calculateDaysUntilDue } from "@/services/telegramService";
 
 const formatCurrency = (value: number) => `ETB ${value.toFixed(2)}`;
 const formatDate = (date: string) => {
@@ -27,6 +29,7 @@ export default function TenantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getTenant, deleteTenant, togglePaid } = useTenants();
+  const { settings } = useSettings();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -67,6 +70,45 @@ export default function TenantDetailScreen() {
 
   const handleTogglePaid = async () => {
     await togglePaid(tenant.id);
+  };
+
+  const handleSendTelegram = async () => {
+    const token = settings.notifications.telegramBotToken;
+    if (!token || !token.trim()) {
+      Alert.alert(
+        "Telegram Bot Required",
+        "Please enter your Telegram Bot Token in Settings first."
+      );
+      return;
+    }
+    if (!tenant.telegramUsername || !tenant.telegramUsername.trim()) {
+      Alert.alert(
+        "Missing Telegram ID",
+        "Please edit tenant details and set their Telegram Username or Chat ID."
+      );
+      return;
+    }
+
+    const days = calculateDaysUntilDue(tenant.dueDate);
+    const amountStr = `ETB ${tenant.rentAmount.toLocaleString()}`;
+    const dateStr = formatDate(tenant.dueDate);
+
+    let msg = `⏰ <b>Rent Reminder</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${amountStr}</b> is due on <b>${dateStr}</b>.`;
+    if (days < 0) {
+      msg = `⚠️ <b>Rent Overdue Notice</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${amountStr}</b> was due on ${dateStr} and is currently <b>${Math.abs(days)} day(s) overdue</b>. Please make your payment.`;
+    } else if (days === 0) {
+      msg = `🔔 <b>Rent Due Today!</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${amountStr}</b> is due <b>TODAY (${dateStr})</b>. Please make your payment.`;
+    }
+
+    const res = await sendTelegramMessage(token, tenant.telegramUsername, msg);
+    if (res.success) {
+      Alert.alert("Success", `Telegram reminder sent successfully to ${tenant.fullName}!`);
+    } else {
+      Alert.alert(
+        "Failed to Send",
+        `Could not send Telegram message: ${res.description || "Unknown error"}.\n\nNote: The renter must open your bot on Telegram and press /start first.`
+      );
+    }
   };
 
   return (
@@ -123,6 +165,12 @@ export default function TenantDetailScreen() {
             <ThemedText style={styles.actionText}>
               {tenant.paid ? "Mark Unpaid" : "Mark Paid"}
             </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.actionButton, { backgroundColor: "#0088cc" }]}
+            onPress={handleSendTelegram}
+          >
+            <ThemedText style={styles.actionText}>Telegram</ThemedText>
           </Pressable>
           <Pressable
             style={[styles.actionButton, { backgroundColor: "#E53935" }]}

@@ -58,11 +58,13 @@ export default function ResetPasswordScreen() {
       <Stack.Screen options={{ title: "Reset Password" }} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
         >
           <ThemedText type="title" style={styles.title}>
             Enter Reset Token
@@ -80,7 +82,8 @@ export default function ResetPasswordScreen() {
                   {
                     color: colors.text,
                     borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    backgroundColor:
+                      colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
                   },
                 ]}
                 placeholder="Enter reset token"
@@ -99,7 +102,8 @@ export default function ResetPasswordScreen() {
                   {
                     color: colors.text,
                     borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    backgroundColor:
+                      colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
                   },
                 ]}
                 placeholder="Enter new password"
@@ -118,7 +122,8 @@ export default function ResetPasswordScreen() {
                   {
                     color: colors.text,
                     borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    backgroundColor:
+                      colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
                   },
                 ]}
                 placeholder="Confirm new password"

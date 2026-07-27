@@ -59,11 +59,13 @@ export default function LoginScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
         >
           <LinearGradient
             colors={isDark ? ["#1E3A5F", "#0F172A"] : ["#2563EB", "#1D4ED8"]}
@@ -159,8 +161,8 @@ export default function LoginScreen() {
               <ThemedText style={styles.footerText}>
                 {"Don't have an account? "}
               </ThemedText>
-              <Link href="/(auth)/register" asChild>
-                <Pressable>
+              <Link href="/(auth)/register" replace asChild>
+                <Pressable hitSlop={12}>
                   <ThemedText style={styles.footerLink}>Sign Up</ThemedText>
                 </Pressable>
               </Link>

@@ -150,6 +150,8 @@ export default function SettingsScreen() {
   const [marketplaceName, setMarketplaceName] = useState(settings.profile.marketplaceName);
   const [phone, setPhone] = useState(settings.profile.phone);
   const [profileEmail, setProfileEmail] = useState(settings.profile.email || user?.email || "");
+  const [telegramBotToken, setTelegramBotToken] = useState(settings.notifications.telegramBotToken || "");
+  const [telegramBotUsername, setTelegramBotUsername] = useState(settings.notifications.telegramBotUsername || "");
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [confirmPinInput, setConfirmPinInput] = useState("");
@@ -160,7 +162,9 @@ export default function SettingsScreen() {
     setMarketplaceName(settings.profile.marketplaceName);
     setPhone(settings.profile.phone);
     setProfileEmail(settings.profile.email || user?.email || "");
-  }, [settings.profile, user]);
+    setTelegramBotToken(settings.notifications.telegramBotToken || "");
+    setTelegramBotUsername(settings.notifications.telegramBotUsername || "");
+  }, [settings.profile, settings.notifications, user]);
 
   useEffect(() => {
     checkBiometricSupport();
@@ -185,6 +189,13 @@ export default function SettingsScreen() {
     });
   }, [ownerName, marketplaceName, phone, profileEmail, updateProfile]);
 
+  const saveTelegramConfig = useCallback(async () => {
+    await updateNotifications({
+      telegramBotToken,
+      telegramBotUsername,
+    });
+  }, [telegramBotToken, telegramBotUsername, updateNotifications]);
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (
@@ -198,6 +209,47 @@ export default function SettingsScreen() {
     }, 1000);
     return () => clearTimeout(timeout);
   }, [ownerName, marketplaceName, phone, profileEmail]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (
+        telegramBotToken !== (settings.notifications.telegramBotToken || "") ||
+        telegramBotUsername !== (settings.notifications.telegramBotUsername || "")
+      ) {
+        saveTelegramConfig();
+      }
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [telegramBotToken, telegramBotUsername]);
+
+  const handleTestTelegramBot = async () => {
+    const token = telegramBotToken.trim();
+    if (!token) {
+      Alert.alert("Error", "Please enter your Telegram Bot Token from @BotFather.");
+      return;
+    }
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const data = await res.json();
+      if (data.ok && data.result) {
+        const botUsername = `@${data.result.username}`;
+        if (!telegramBotUsername.trim()) {
+          setTelegramBotUsername(botUsername);
+          await updateNotifications({ telegramBotUsername: botUsername, telegramBotToken: token });
+        } else {
+          await updateNotifications({ telegramBotToken: token });
+        }
+        Alert.alert(
+          "Success!",
+          `Telegram Bot Connected!\n\nBot Name: ${data.result.first_name}\nUsername: ${botUsername}\n\nRenters can start your bot at:\nhttps://t.me/${data.result.username}`
+        );
+      } else {
+        Alert.alert("Invalid Token", data.description || "Telegram API rejected this bot token.");
+      }
+    } catch (e: any) {
+      Alert.alert("Connection Error", e.message || "Failed to contact Telegram servers.");
+    }
+  };
 
   async function handleFingerprintToggle(value: boolean) {
     if (value) {
@@ -379,9 +431,14 @@ export default function SettingsScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
         style={styles.flex}
       >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         <SectionHeader title="Profile" />
         <View style={[styles.card, { backgroundColor: colors.icon + "10" }]}>
           <InlineEditRow
@@ -420,9 +477,29 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.icon + "10" }]}>
           <SettingToggle
             label="Enable Telegram"
-            description="Receive notifications via Telegram bot"
+            description="Send automated due reminders via Telegram"
             value={settings.notifications.enableTelegram}
             onValueChange={(v) => updateNotifications({ enableTelegram: v })}
+            colors={colors}
+          />
+          <InlineEditRow
+            label="Bot Token"
+            value={telegramBotToken}
+            onChangeText={setTelegramBotToken}
+            placeholder="e.g. 123456:ABC..."
+            colors={colors}
+          />
+          <InlineEditRow
+            label="Bot Username"
+            value={telegramBotUsername}
+            onChangeText={setTelegramBotUsername}
+            placeholder="@MyRentalBot"
+            colors={colors}
+          />
+          <SettingRow
+            label="Test Telegram Bot"
+            value="Verify Token"
+            onPress={handleTestTelegramBot}
             colors={colors}
           />
           <SettingToggle
