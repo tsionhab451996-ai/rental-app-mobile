@@ -13,14 +13,19 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
 import { usePayments } from "@/contexts/PaymentContext";
+import { useProperty } from "@/contexts/PropertyContext";
 import { useTenants } from "@/contexts/TenantContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const statuses = ["paid", "unpaid", "overdue", "partial"] as const;
 
 export default function PaymentFormScreen() {
+  const insets = useSafeAreaInsets();
+  const { selectedProperty } = useProperty();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { addPayment, updatePayment, getPayment } = usePayments();
@@ -36,7 +41,7 @@ export default function PaymentFormScreen() {
   const [shopNumber, setShopNumber] = useState("");
   const [monthlyRent, setMonthlyRent] = useState("");
   const [paymentMonth, setPaymentMonth] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState("ቀን 01 - 07");
   const [paymentDate, setPaymentDate] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [remainingBalance, setRemainingBalance] = useState("");
@@ -51,7 +56,7 @@ export default function PaymentFormScreen() {
       setShopNumber(existing.shopNumber);
       setMonthlyRent(existing.monthlyRent.toString());
       setPaymentMonth(existing.paymentMonth);
-      setDueDate(existing.dueDate);
+      setDueDate(existing.dueDate || "ቀን 01 - 07");
       setPaymentDate(existing.paymentDate);
       setAmountPaid(existing.amountPaid.toString());
       setRemainingBalance(existing.remainingBalance.toString());
@@ -70,7 +75,7 @@ export default function PaymentFormScreen() {
       setTenantName(tenant.fullName);
       setShopNumber(tenant.shopNumber);
       setMonthlyRent(tenant.rentAmount.toString());
-      setDueDate(tenant.dueDate);
+      setDueDate(tenant.dueDate || "ቀን 01 - 07");
       setAmountPaid(tenant.rentAmount.toString());
       setRemainingBalance("0");
     }
@@ -104,6 +109,7 @@ export default function PaymentFormScreen() {
       fine: parsedFine,
       notes: notes.trim(),
       status: status as PaymentFormStatus,
+      property: existing?.property ?? selectedProperty,
     };
 
     if (isEditing && id) {
@@ -130,9 +136,10 @@ export default function PaymentFormScreen() {
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 24) + 40 }]}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Tenant</ThemedText>
@@ -228,10 +235,10 @@ export default function PaymentFormScreen() {
               autoCapitalize="none"
             />
             <InputField
-              label="Due Date (YYYY-MM-DD)"
+              label="Due Date / Window (Ethiopian Calendar)"
               value={dueDate}
               onChangeText={setDueDate}
-              placeholder="e.g. 2026-07-10"
+              placeholder="ቀን 01 - 07 (Days 1 to 7)"
               colors={colors}
               colorScheme={colorScheme}
               autoCapitalize="none"
@@ -330,14 +337,14 @@ export default function PaymentFormScreen() {
             </View>
           </View>
 
-          <Pressable
+          <ScalePressable
             style={[styles.saveButton, { backgroundColor: colors.tint }]}
             onPress={handleSave}
           >
             <ThemedText style={styles.saveButtonText}>
               {isEditing ? "Update Payment" : "Record Payment"}
             </ThemedText>
-          </Pressable>
+          </ScalePressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -374,11 +381,11 @@ function InputField({
         style={[
           fieldStyles.input,
           multiline && fieldStyles.textArea,
-          !editable && fieldStyles.readOnly,
+          editable === false && fieldStyles.readOnly,
           {
             color: colors.text,
-            borderColor: colors.icon,
-            backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+            borderColor: colors.inputBorder,
+            backgroundColor: colors.inputBg,
           },
         ]}
         placeholder={placeholder}

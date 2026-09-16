@@ -16,11 +16,14 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { BrandLogo } from "@/components/ui/brand-logo";
+import { ThemeSelector } from "@/components/ui/theme-selector";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useTenants } from "@/contexts/TenantContext";
+import { runScheduledRemindersCheck } from "@/services/cronWorker";
 
 function SectionHeader({ title }: { title: string }) {
   return <ThemedText style={styles.sectionHeader}>{title}</ThemedText>;
@@ -145,6 +148,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
+  const isDark = colorScheme === "dark";
 
   const [ownerName, setOwnerName] = useState(settings.profile.ownerName);
   const [marketplaceName, setMarketplaceName] = useState(settings.profile.marketplaceName);
@@ -251,6 +255,18 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleRunReminderCheck = async () => {
+    try {
+      const res = await runScheduledRemindersCheck();
+      Alert.alert(
+        res.success ? "Reminders Check Complete" : "Check Notice",
+        res.message + (res.sentCount > 0 ? `\n\nSent ${res.sentCount} Telegram reminders.` : ""),
+      );
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Failed to run automated reminder check.");
+    }
+  };
+
   async function handleFingerprintToggle(value: boolean) {
     if (value) {
       try {
@@ -301,10 +317,6 @@ export default function SettingsScreen() {
         },
       },
     ]);
-  }
-
-  async function handleDarkModeToggle(value: boolean) {
-    await updateAppearance({ darkMode: value });
   }
 
   async function handleLanguageChange() {
@@ -502,6 +514,12 @@ export default function SettingsScreen() {
             onPress={handleTestTelegramBot}
             colors={colors}
           />
+          <SettingRow
+            label="Dispatch Due Reminders"
+            value="Run Check"
+            onPress={handleRunReminderCheck}
+            colors={colors}
+          />
           <SettingToggle
             label="Enable SMS"
             description="Receive notifications via SMS"
@@ -523,6 +541,12 @@ export default function SettingsScreen() {
             label="7 Days Before"
             value={settings.notifications.reminderDays.sevenDaysBefore}
             onValueChange={(v) => updateNotificationDays({ sevenDaysBefore: v })}
+            colors={colors}
+          />
+          <SettingToggle
+            label="5 Days Before"
+            value={settings.notifications.reminderDays.fiveDaysBefore ?? true}
+            onValueChange={(v) => updateNotificationDays({ fiveDaysBefore: v })}
             colors={colors}
           />
           <SettingToggle
@@ -581,25 +605,20 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <SectionHeader title="Appearance" />
-        <View style={[styles.card, { backgroundColor: colors.icon + "10" }]}>
-          <SettingToggle
-            label="Dark Mode"
-            description="Switch between light and dark theme"
-            value={
-              settings.appearance.darkMode === null
-                ? colorScheme === "dark"
-                : settings.appearance.darkMode
-            }
-            onValueChange={handleDarkModeToggle}
-            colors={colors}
-          />
-          <SettingRow
-            label="Language"
-            value={settings.appearance.language}
-            onPress={handleLanguageChange}
-            colors={colors}
-          />
+        <SectionHeader title="Appearance & Theme" />
+        <View style={[styles.card, { backgroundColor: isDark ? "#151F32" : "#FFFFFF", borderColor: colors.border, borderWidth: 1, padding: 14 }]}>
+          <ThemedText style={[styles.settingLabel, { marginBottom: 10, fontWeight: "600" }]}>
+            Color Theme
+          </ThemedText>
+          <ThemeSelector />
+          <View style={{ marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+            <SettingRow
+              label="Language"
+              value={settings.appearance.language}
+              onPress={handleLanguageChange}
+              colors={colors}
+            />
+          </View>
         </View>
 
         <SectionHeader title="Backup" />
@@ -619,6 +638,11 @@ export default function SettingsScreen() {
         </View>
 
         <SectionHeader title="About" />
+        <View style={[styles.card, { backgroundColor: isDark ? "#0b1219" : colors.icon + "10", alignItems: "center", paddingVertical: 20, borderColor: isDark ? "#1e2c3d" : colors.border, borderWidth: 1 }]}>
+          <BrandLogo size="md" variant={isDark ? "dark" : "blue"} />
+          <ThemedText style={{ fontSize: 18, fontWeight: "800", marginTop: 10, letterSpacing: -0.3 }}>RentalApp Mobile</ThemedText>
+          <ThemedText style={{ fontSize: 12, color: colors.icon, marginTop: 2 }}>Commercial Property & Tenancy Management</ThemedText>
+        </View>
         <View style={[styles.card, { backgroundColor: colors.icon + "10" }]}>
           <SettingRow
             label="App Version"

@@ -4,7 +4,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -13,11 +12,16 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
+import { useProperty } from "@/contexts/PropertyContext";
 import { useTenants } from "@/contexts/TenantContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TenantFormScreen() {
+  const insets = useSafeAreaInsets();
+  const { selectedProperty } = useProperty();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getTenant, addTenant, updateTenant } = useTenants();
@@ -36,12 +40,13 @@ export default function TenantFormScreen() {
   const [shopNumber, setShopNumber] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [leasePeriod, setLeasePeriod] = useState("");
   const [depositPaid, setDepositPaid] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [rentAmount, setRentAmount] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState("ቀን 01 - 07");
 
   useEffect(() => {
     if (existing) {
@@ -52,14 +57,15 @@ export default function TenantFormScreen() {
       setNationalId(existing.nationalId);
       setBusinessType(existing.businessType);
       setShopNumber(existing.shopNumber);
-      setStartDate(existing.startDate);
-      setEndDate(existing.endDate);
-      setDepositPaid(existing.depositPaid.toString());
-      setEmergencyContact(existing.emergencyContact);
-      setAddress(existing.address);
-      setNotes(existing.notes);
-      setRentAmount(existing.rentAmount.toString());
-      setDueDate(existing.dueDate);
+      setStartDate(existing.startDate || "");
+      setEndDate(existing.endDate || "");
+      setLeasePeriod(existing.leasePeriod || "");
+      setDepositPaid(existing.depositPaid ? existing.depositPaid.toString() : "");
+      setEmergencyContact(existing.emergencyContact || "");
+      setAddress(existing.address || "");
+      setNotes(existing.notes || "");
+      setRentAmount(existing.rentAmount ? existing.rentAmount.toString() : "");
+      setDueDate(existing.dueDate || "ቀን 01 - 07");
     }
   }, [existing]);
 
@@ -79,6 +85,7 @@ export default function TenantFormScreen() {
       shopNumber: shopNumber.trim(),
       startDate: startDate.trim(),
       endDate: endDate.trim(),
+      leasePeriod: leasePeriod.trim(),
       depositPaid: Number(depositPaid) || 0,
       emergencyContact: emergencyContact.trim(),
       address: address.trim(),
@@ -89,14 +96,19 @@ export default function TenantFormScreen() {
       lastPaymentDate: existing?.lastPaymentDate ?? null,
       notificationId: existing?.notificationId ?? null,
       history: existing?.history ?? [],
+      property: existing?.property ?? selectedProperty,
     };
 
-    if (isEditing && id) {
-      await updateTenant(id, base);
-    } else {
-      await addTenant(base);
+    try {
+      if (isEditing && id) {
+        await updateTenant(id, base);
+      } else {
+        await addTenant(base);
+      }
+      router.back();
+    } catch {
+      Alert.alert("Error", "Failed to save tenant. Please try again.");
     }
-    router.back();
   }
 
   return (
@@ -110,9 +122,10 @@ export default function TenantFormScreen() {
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 24) + 40 }]}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>
@@ -192,10 +205,10 @@ export default function TenantFormScreen() {
               keyboardType="numeric"
             />
             <InputField
-              label="Due Date (YYYY-MM-DD)"
+              label="Rent Due Window (Ethiopian Calendar)"
               value={dueDate}
               onChangeText={setDueDate}
-              placeholder="e.g. 2026-07-10"
+              placeholder="e.g. ቀን 01 - 07 (Days 1 to 7)"
               colors={colors}
               colorScheme={colorScheme}
               autoCapitalize="none"
@@ -219,10 +232,19 @@ export default function TenantFormScreen() {
               autoCapitalize="none"
             />
             <InputField
-              label="End Date (YYYY-MM-DD)"
+              label="Contract Deadline / End Date"
               value={endDate}
               onChangeText={setEndDate}
-              placeholder="e.g. 2027-01-01"
+              placeholder="Optional — leave blank if ongoing"
+              colors={colors}
+              colorScheme={colorScheme}
+              autoCapitalize="none"
+            />
+            <InputField
+              label="Lease Period / Lease Term"
+              value={leasePeriod}
+              onChangeText={setLeasePeriod}
+              placeholder="e.g. 1 year, 6 months (optional)"
               colors={colors}
               colorScheme={colorScheme}
               autoCapitalize="none"
@@ -260,14 +282,14 @@ export default function TenantFormScreen() {
             />
           </View>
 
-          <Pressable
+          <ScalePressable
             style={[styles.saveButton, { backgroundColor: colors.tint }]}
             onPress={handleSave}
           >
             <ThemedText style={styles.saveButtonText}>
               {isEditing ? "Update Tenant" : "Add Tenant"}
             </ThemedText>
-          </Pressable>
+          </ScalePressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -304,8 +326,8 @@ function InputField({
           multiline && fieldStyles.textArea,
           {
             color: colors.text,
-            borderColor: colors.icon,
-            backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+            borderColor: colors.inputBorder,
+            backgroundColor: colors.inputBg,
           },
         ]}
         placeholder={placeholder}

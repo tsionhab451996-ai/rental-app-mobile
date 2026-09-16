@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else if (user && inAuthGroup) {
       if (!isNavigating.current) {
         isNavigating.current = true;
-        router.replace("/(tabs)");
+        router.replace("/property-select");
         setTimeout(() => { isNavigating.current = false; }, 500);
       }
     }

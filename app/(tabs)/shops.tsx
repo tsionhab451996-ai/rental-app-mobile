@@ -1,35 +1,43 @@
-import { Link, Stack } from "expo-router";
-import { useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
+import { Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
+import { useProperty } from "@/contexts/PropertyContext";
 import { useShops } from "@/contexts/ShopContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-type SortKey = "shopNumber" | "shopName" | "rentPrice" | "status";
+type FilterStatus = "all" | "occupied" | "vacant" | "facility";
+type SortKey = "shopNumber" | "rentPrice" | "shopName";
 
 export default function ShopsScreen() {
   const { shops, loading } = useShops();
+  const { selectedProperty } = useProperty();
   const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
+  const colors = Colors[colorScheme];
+  const isDark = colorScheme === "dark";
+
   const [search, setSearch] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [sortKey, setSortKey] = useState<SortKey>("shopNumber");
   const [sortAsc, setSortAsc] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 500));
     setRefreshing(false);
   }, []);
 
@@ -42,147 +50,357 @@ export default function ShopsScreen() {
     }
   };
 
-  const filtered = (search.trim()
-    ? shops.filter(
-        (s) =>
-          s.shopNumber.toLowerCase().includes(search.toLowerCase()) ||
-          s.shopName.toLowerCase().includes(search.toLowerCase()) ||
-          s.tenantName.toLowerCase().includes(search.toLowerCase()),
-      )
-    : shops
-  ).sort((a, b) => {
-    let cmp = 0;
-    if (sortKey === "shopNumber") cmp = a.shopNumber.localeCompare(b.shopNumber);
-    else if (sortKey === "shopName") cmp = a.shopName.localeCompare(b.shopName);
-    else if (sortKey === "rentPrice") cmp = a.rentPrice - b.rentPrice;
-    else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
-    return sortAsc ? cmp : -cmp;
-  });
+  const scopedPropertyShops = shops.filter(
+    (s) => s.property === selectedProperty,
+  );
 
-  const statusColor = (status: string) =>
-    status === "occupied" ? "#4CAF50" : "#9E9E9E";
-
-  const sortIcon = (key: SortKey) =>
-    sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
+  const filtered = scopedPropertyShops
+    .filter((s) => {
+      if (filterStatus !== "all" && s.status !== filterStatus) return false;
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        s.shopNumber.toLowerCase().includes(q) ||
+        s.shopName.toLowerCase().includes(q) ||
+        s.tenantName.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "shopNumber") cmp = a.shopNumber.localeCompare(b.shopNumber);
+      else if (sortKey === "shopName") cmp = a.shopName.localeCompare(b.shopName);
+      else if (sortKey === "rentPrice") cmp = a.rentPrice - b.rentPrice;
+      return sortAsc ? cmp : -cmp;
+    });
 
   if (loading) {
     return (
-      <ThemedView style={styles.centered}>
-        <Stack.Screen options={{ title: "Shop Management" }} />
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
-      </ThemedView>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: "Shop Management" }} />
-      <View style={styles.header}>
-        <TextInput
-          style={[
-            styles.searchInput,
-            {
-              color: colors.text,
-              borderColor: colors.icon,
-              backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
-            },
-          ]}
-          placeholder="Search by number, name, or tenant..."
-          placeholderTextColor={colors.icon}
-          value={search}
-          onChangeText={setSearch}
-          autoCapitalize="none"
-        />
-        <Link href="/shop-form" asChild>
-          <Pressable style={[styles.addButton, { backgroundColor: colors.tint }]}>
-            <ThemedText style={styles.addButtonText}>+ Add Shop</ThemedText>
-          </Pressable>
-        </Link>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.list}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title="Units & Shops"
+        subtitle={`${filtered.length} units in ${selectedProperty}`}
+        rightAction={
+          <Link href="/shop-form" asChild>
+            <ScalePressable
+              style={[styles.addBtn, { backgroundColor: colors.tint }]}
+            >
+              <Ionicons name="add" size={18} color="#FFFFFF" />
+              <Text style={styles.addBtnText}>New Unit</Text>
+            </ScalePressable>
+          </Link>
         }
       >
-        {filtered.length === 0 ? (
-          <View style={styles.empty}>
-            <ThemedText style={{ opacity: 0.5, textAlign: "center" }}>
-              {shops.length === 0
-                ? "No shops yet. Tap + Add Shop to get started."
-                : "No shops match your search."}
-            </ThemedText>
-          </View>
-        ) : (
-          <>
-            <View style={styles.tableHeader}>
-              <Pressable style={styles.colNumber} onPress={() => toggleSort("shopNumber")}>
-                <ThemedText style={styles.th}>#{sortIcon("shopNumber")}</ThemedText>
-              </Pressable>
-              <Pressable style={styles.colName} onPress={() => toggleSort("shopName")}>
-                <ThemedText style={styles.th}>Name{sortIcon("shopName")}</ThemedText>
-              </Pressable>
-              <ThemedText style={[styles.th, styles.colFloor]}>Floor</ThemedText>
-              <Pressable style={styles.colRent} onPress={() => toggleSort("rentPrice")}>
-                <ThemedText style={styles.th}>Rent{sortIcon("rentPrice")}</ThemedText>
-              </Pressable>
-              <Pressable style={styles.colStatus} onPress={() => toggleSort("status")}>
-                <ThemedText style={styles.th}>Status{sortIcon("status")}</ThemedText>
-              </Pressable>
-              <ThemedText style={[styles.th, styles.colTenant]}>Tenant</ThemedText>
-            </View>
-            {filtered.map((shop) => (
-              <Link
-                key={shop.id}
-                href={`/shop-form?id=${shop.id}`}
-                asChild
+        {/* Search Bar */}
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: isDark ? "#0F172A" : "#F1F5F9",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={colors.icon}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search by unit #, name, tenant..."
+            placeholderTextColor={colors.icon}
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch("")} style={styles.clearSearch}>
+              <Ionicons name="close-circle" size={18} color={colors.icon} />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Filter Chips */}
+        <View style={styles.chipRow}>
+          {(["all", "occupied", "vacant", "facility"] as const).map((st) => {
+            const active = filterStatus === st;
+            const count =
+              st === "all"
+                ? scopedPropertyShops.length
+                : scopedPropertyShops.filter((s) => s.status === st).length;
+            return (
+              <Pressable
+                key={st}
+                onPress={() => setFilterStatus(st)}
+                style={[
+                  styles.filterChip,
+                  active
+                    ? [styles.filterChipActive, { backgroundColor: colors.tint }]
+                    : [
+                        styles.filterChipInactive,
+                        {
+                          backgroundColor: isDark ? "#1E293B" : "#FFFFFF",
+                          borderColor: colors.border,
+                        },
+                      ],
+                ]}
               >
-                <Pressable
+                <Text
                   style={[
-                    styles.shopRow,
+                    styles.chipText,
                     {
-                      backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#fff",
-                      borderColor: colors.icon + "30",
+                      color: active
+                        ? "#FFFFFF"
+                        : isDark
+                        ? "#94A3B8"
+                        : "#64748B",
+                      fontWeight: active ? "700" : "500",
                     },
                   ]}
                 >
-                  <View style={styles.shopRowContent}>
-                    <ThemedText style={styles.colNumber}>
-                      {shop.shopNumber}
-                    </ThemedText>
-                    <ThemedText style={styles.colName} numberOfLines={1}>
-                      {shop.shopName}
-                    </ThemedText>
-                    <ThemedText style={styles.colFloor}>{shop.floor}</ThemedText>
-                    <ThemedText style={styles.colRent}>
-                      {shop.rentPrice.toLocaleString()}
-                    </ThemedText>
-                    <View style={styles.colStatus}>
+                  {st.charAt(0).toUpperCase() + st.slice(1)} ({count})
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          <Pressable
+            onPress={() => toggleSort("rentPrice")}
+            style={[
+              styles.sortBtn,
+              {
+                backgroundColor: isDark ? "#1E293B" : "#FFFFFF",
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Ionicons name="swap-vertical" size={14} color={colors.icon} />
+            <Text style={[styles.sortBtnText, { color: colors.textSecondary }]}>
+              Rent {sortKey === "rentPrice" ? (sortAsc ? "▲" : "▼") : ""}
+            </Text>
+          </Pressable>
+        </View>
+      </ScreenHeader>
+
+      <ScrollView
+        contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.tint}
+          />
+        }
+      >
+        {filtered.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons
+              name="business-outline"
+              size={48}
+              color={colors.icon}
+              style={{ opacity: 0.5, marginBottom: 12 }}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              No Units Found
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {scopedPropertyShops.length === 0
+                ? `No units added yet in ${selectedProperty}. Tap '+ New Unit' below to create your first space.`
+                : "No units match your current search or filter."}
+            </Text>
+            {scopedPropertyShops.length === 0 && (
+              <Link href="/shop-form" asChild>
+                <ScalePressable
+                  style={[
+                    styles.addBtn,
+                    { backgroundColor: colors.tint, marginTop: 16, paddingHorizontal: 16, paddingVertical: 10 },
+                  ]}
+                >
+                  <Ionicons name="add" size={18} color="#FFFFFF" />
+                  <Text style={styles.addBtnText}>Add Unit</Text>
+                </ScalePressable>
+              </Link>
+            )}
+          </View>
+        ) : (
+          filtered.map((shop) => {
+            const isOccupied = shop.status === "occupied";
+            return (
+              <Link key={shop.id} href={`/shop-form?id=${shop.id}`} asChild>
+                <ScalePressable
+                  style={[
+                    styles.shopCard,
+                    {
+                      backgroundColor: isDark ? "#151F32" : "#FFFFFF",
+                      borderColor: isDark ? "#23324D" : "#E2E8F0",
+                    },
+                  ]}
+                >
+                  <View style={styles.cardHeader}>
+                    <View style={styles.unitBadgeRow}>
+                      <View
+                        style={[
+                          styles.unitNumberBadge,
+                          {
+                            backgroundColor: isDark
+                              ? "rgba(59, 130, 246, 0.15)"
+                              : "#EFF6FF",
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.unitNumberText, { color: colors.tint }]}>
+                          Unit {shop.shopNumber}
+                        </Text>
+                      </View>
+                      {shop.floor ? (
+                        <View
+                          style={[
+                            styles.floorBadge,
+                            {
+                              backgroundColor: isDark
+                                ? "#1E293B"
+                                : "#F1F5F9",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.floorText,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            {shop.floor}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* Status Pill */}
+                    <View
+                      style={[
+                        styles.statusPill,
+                        {
+                          backgroundColor:
+                            shop.status === "occupied"
+                              ? isDark
+                                ? "rgba(16, 185, 129, 0.15)"
+                                : "#ECFDF5"
+                              : shop.status === "facility"
+                              ? isDark
+                                ? "rgba(99, 102, 241, 0.15)"
+                                : "#EEF2FF"
+                              : isDark
+                              ? "rgba(245, 158, 11, 0.15)"
+                              : "#FFFBEB",
+                        },
+                      ]}
+                    >
                       <View
                         style={[
                           styles.statusDot,
-                          { backgroundColor: statusColor(shop.status) },
+                          {
+                            backgroundColor:
+                              shop.status === "occupied"
+                                ? "#10B981"
+                                : shop.status === "facility"
+                                ? "#6366F1"
+                                : "#F59E0B",
+                          },
                         ]}
                       />
-                      <ThemedText
-                        style={{ fontSize: 12, textTransform: "capitalize" }}
+                      <Text
+                        style={[
+                          styles.statusPillText,
+                          {
+                            color:
+                              shop.status === "occupied"
+                                ? "#10B981"
+                                : shop.status === "facility"
+                                ? "#6366F1"
+                                : "#D97706",
+                          },
+                        ]}
                       >
-                        {shop.status}
-                      </ThemedText>
+                        {shop.status === "occupied"
+                          ? "Occupied"
+                          : shop.status === "facility"
+                          ? "Facility"
+                          : "Vacant"}
+                      </Text>
                     </View>
-                    <ThemedText style={styles.colTenant} numberOfLines={1}>
-                      {shop.tenantName || "—"}
-                    </ThemedText>
                   </View>
-                </Pressable>
+
+                  <Text
+                    style={[styles.shopName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {shop.shopName}
+                  </Text>
+
+                  {/* Tenant information */}
+                  <View style={styles.tenantRow}>
+                    <Ionicons
+                      name="person-outline"
+                      size={14}
+                      color={colors.icon}
+                    />
+                    <Text
+                      style={[
+                        styles.tenantName,
+                        { color: colors.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {shop.tenantName ? shop.tenantName : "No tenant assigned"}
+                    </Text>
+                  </View>
+
+                  {/* Pricing and Details Footer */}
+                  <View
+                    style={[
+                      styles.cardFooter,
+                      { borderTopColor: isDark ? "#1E293B" : "#F1F5F9" },
+                    ]}
+                  >
+                    <View>
+                      <Text
+                        style={[styles.priceLabel, { color: colors.textSecondary }]}
+                      >
+                        Monthly Rent
+                      </Text>
+                      <Text style={[styles.priceValue, { color: colors.text }]}>
+                        ETB {shop.rentPrice.toLocaleString()}
+                      </Text>
+                    </View>
+
+                    <View style={styles.cardArrow}>
+                      <Text style={[styles.editHint, { color: colors.tint }]}>
+                        Details
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color={colors.tint}
+                      />
+                    </View>
+                  </View>
+                </ScalePressable>
               </Link>
-            ))}
-          </>
+            );
+          })
         )}
       </ScrollView>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -192,85 +410,190 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
   },
-  header: {
+  addBtn: {
     flexDirection: "row",
-    gap: 10,
-    padding: 16,
-    paddingBottom: 8,
     alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  addBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 15,
+    fontSize: 14,
+    height: "100%",
   },
-  addButton: {
-    height: 44,
-    borderRadius: 12,
-    paddingHorizontal: 18,
+  clearSearch: {
+    padding: 4,
+  },
+  chipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  filterChipActive: {},
+  filterChipInactive: {
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 12,
+  },
+  sortBtn: {
+    marginLeft: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sortBtnText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  listContent: {
+    padding: 16,
+    gap: 12,
+  },
+  emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: 60,
+    paddingHorizontal: 24,
   },
-  addButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
-  },
-  list: {
-    padding: 16,
-    paddingTop: 8,
-    paddingBottom: 32,
-  },
-  empty: {
-    marginTop: 60,
-    alignItems: "center",
-  },
-  tableHeader: {
-    flexDirection: "row",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "#ddd",
-    gap: 4,
-  },
-  th: {
-    fontSize: 12,
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    textTransform: "uppercase",
-    opacity: 0.5,
+    marginBottom: 6,
   },
-  shopRow: {
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  shopCard: {
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  unitBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  unitNumberBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  unitNumberText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  floorBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  floorText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 12,
-    marginTop: 8,
   },
-  shopRowContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    gap: 4,
-  },
-  colNumber: { width: "14%", fontSize: 14, fontWeight: "600" },
-  colName: { width: "20%", fontSize: 13 },
-  colFloor: { width: "10%", fontSize: 13 },
-  colRent: { width: "16%", fontSize: 13, textAlign: "right" },
-  colStatus: {
-    width: "18%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  colTenant: { width: "20%", fontSize: 13 },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  shopName: {
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  tenantRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  tenantName: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  priceLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  priceValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    marginTop: 1,
+  },
+  cardArrow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  editHint: {
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

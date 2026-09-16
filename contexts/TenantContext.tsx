@@ -8,6 +8,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PropertyName } from "./PropertyContext";
+import {
+  ZENEBEWORK_TENANTS,
+  CMC_TENANTS,
+  AYAT_TENANTS,
+} from "@/constants/zenebeworkData";
+import {
+  getEthiopianPaymentSchedule,
+  toEthiopianDate,
+} from "@/utils/ethiopianCalendar";
+import {
+  startReminderCronWorker,
+  stopReminderCronWorker,
+} from "@/services/cronWorker";
 
 export type PaymentHistory = {
   id: string;
@@ -28,6 +42,7 @@ export type Tenant = {
   shopNumber: string;
   startDate: string;
   endDate: string;
+  leasePeriod?: string;
   depositPaid: number;
   emergencyContact: string;
   address: string;
@@ -38,6 +53,7 @@ export type Tenant = {
   lastPaymentDate: string | null;
   notificationId: string | null;
   history: PaymentHistory[];
+  property?: PropertyName;
 };
 
 type TenantContextType = {
@@ -70,6 +86,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadTenants();
+    startReminderCronWorker();
+    return () => {
+      stopReminderCronWorker();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,17 +103,32 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   async function loadTenants() {
     try {
       const json = await AsyncStorage.getItem(STORAGE_KEY);
+      const defaultSeeds = [...ZENEBEWORK_TENANTS, ...CMC_TENANTS, ...AYAT_TENANTS];
+
       if (json) {
         const parsed: Tenant[] = JSON.parse(json);
-        setTenants(parsed);
-        parsed.forEach((t) => {
-          if (!t.paid && !t.notificationId) {
-            scheduleReminder(t);
-          }
-        });
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Keep user-created custom tenants that aren't seed IDs or pre-populated CMC mock tenants
+          const userCustomTenants = parsed.filter(
+            (t) =>
+              !t.id.startsWith("zen-t-") &&
+              !t.id.startsWith("cmc-t-") &&
+              !t.id.startsWith("ayt-t-") &&
+              !["cmc-t-1", "cmc-t-2", "1", "2", "3"].includes(t.id) &&
+              t.fullName !== "Ermias Bekele" &&
+              t.fullName !== "Dr. Bethlehem Alemu",
+          );
+          // Always ensure the official Zenebework 22 active tenants and isolated property seeds are active
+          const merged = [...ZENEBEWORK_TENANTS, ...CMC_TENANTS, ...AYAT_TENANTS, ...userCustomTenants];
+          setTenants(merged);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          return;
+        }
       }
+      setTenants(defaultSeeds);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSeeds));
     } catch {
-      // ignore
+      setTenants([...ZENEBEWORK_TENANTS, ...CMC_TENANTS, ...AYAT_TENANTS]);
     } finally {
       setLoading(false);
     }
@@ -109,20 +144,36 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   async function scheduleReminder(tenant: Tenant) {
     try {
-      const due = new Date(tenant.dueDate);
-      const reminderDate = new Date(due);
-      reminderDate.setDate(due.getDate() - 1);
-      if (reminderDate <= new Date()) return;
+      const isEth = !tenant.dueDate || tenant.dueDate.includes("ቀን");
+      let seconds = 0;
+      let body = "";
 
-      const seconds = Math.ceil(
-        (reminderDate.getTime() - Date.now()) / 1000,
-      );
-      if (seconds <= 0) return;
+      if (isEth) {
+        const eth = toEthiopianDate(new Date());
+        const scheduleStr = getEthiopianPaymentSchedule(new Date(), "both");
+        if (eth.day <= 7) {
+          const daysLeft = Math.max(1, 7 - eth.day);
+          seconds = daysLeft * 24 * 3600;
+          body = `${tenant.fullName}'s rent of ETB ${tenant.rentAmount.toLocaleString()} is due within ${scheduleStr} (Deadline: ቀን 07).`;
+        } else {
+          body = `${tenant.fullName}'s rent of ETB ${tenant.rentAmount.toLocaleString()} is overdue for ${scheduleStr}.`;
+          seconds = 3600;
+        }
+      } else {
+        const due = new Date(tenant.dueDate);
+        if (isNaN(due.getTime())) return;
+        const reminderDate = new Date(due);
+        reminderDate.setDate(due.getDate() - 1);
+        if (reminderDate <= new Date()) return;
+        seconds = Math.ceil((reminderDate.getTime() - Date.now()) / 1000);
+        if (seconds <= 0) return;
+        body = `${tenant.fullName}'s payment of ETB ${tenant.rentAmount.toLocaleString()} is due on ${due.toLocaleDateString()}.`;
+      }
 
       const nid = await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Rental payment due soon",
-          body: `${tenant.fullName}'s payment of ETB ${tenant.rentAmount.toFixed(2)} is due on ${new Date(tenant.dueDate).toLocaleDateString()}.`,
+          title: "Rental Payment Due Soon",
+          body,
         },
         trigger: { seconds, repeats: false } as any,
       });
@@ -154,6 +205,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         scheduleReminder(newTenant);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -163,11 +215,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         prev.map((t) => {
           if (t.id !== id) return t;
           const updated = { ...t, ...updates };
-          if (!updated.paid && !updated.notificationId) {
-            scheduleReminder(updated);
-          }
           if (updated.paid && t.notificationId) {
             cancelReminder(t.notificationId);
+            updated.notificationId = null;
           }
           return updated;
         }),
@@ -191,24 +241,33 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     [tenants],
   );
 
-  const togglePaid = useCallback(async (id: string) => {
-    setTenants((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const updated = {
-          ...t,
-          paid: !t.paid,
-          lastPaymentDate: !t.paid ? new Date().toISOString() : null,
-        };
-        if (!updated.paid) {
-          scheduleReminder(updated);
-        } else if (t.notificationId) {
-          cancelReminder(t.notificationId);
-        }
-        return updated;
-      }),
-    );
-  }, []);
+  const togglePaid = useCallback(
+    async (id: string) => {
+      const target = tenants.find((t) => t.id === id);
+      if (!target) return;
+      const nextPaid = !target.paid;
+      const now = new Date().toISOString();
+      const updatedHistory: PaymentHistory[] = nextPaid
+        ? [
+            {
+              id: `hist-${Date.now()}`,
+              timestamp: now,
+              imageUri: "",
+              status: "confirmed",
+              sender: "owner",
+            },
+            ...target.history,
+          ]
+        : target.history.filter((h) => h.status !== "confirmed");
+
+      await updateTenant(id, {
+        paid: nextPaid,
+        lastPaymentDate: nextPaid ? now.split("T")[0] : null,
+        history: updatedHistory,
+      });
+    },
+    [tenants, updateTenant],
+  );
 
   return (
     <TenantContext.Provider

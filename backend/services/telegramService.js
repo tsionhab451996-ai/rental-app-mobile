@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 function getBotToken() {
-  const token = process.env.BOT_TOKEN;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     throw new Error("BOT_TOKEN environment variable is not set");
   }

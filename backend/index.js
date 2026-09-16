@@ -33,7 +33,7 @@ app.listen(PORT, () => {
     const webhookUrl = `${baseUrl.replace(/\/$/, "")}/telegram/webhook`;
     telegramService.setWebhook(webhookUrl).catch(err => {
       console.warn("Webhook setup failed:", err.response?.data?.description || err.message);
-      console.warn("Update BOT_TOKEN in backend/.env with a real token from @BotFather");
+      console.warn("Update TELEGRAM_BOT_TOKEN in backend/.env with a real token from @BotFather");
     });
   } else {
     console.warn("BASE_URL not set. Webhook not configured. Set BASE_URL in .env");

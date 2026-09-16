@@ -1,49 +1,67 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  buildTelegramReminderMessage,
+  getEthiopianRentCycleDueInfo,
+} from "@/utils/ethiopianCalendar";
 
 const SENT_REMINDERS_KEY = "@rentalapp/sent_reminders_log";
 
 export type TenantReminderInfo = {
   id: string;
   fullName: string;
+  shopNumber: string;
   rentAmount: number;
   dueDate: string;
   telegramUsername: string;
   paid?: boolean;
+  leasePeriod?: string;
+  property?: string;
 };
 
 export type NotificationDaysConfig = {
   sevenDaysBefore: boolean;
+  fiveDaysBefore?: boolean;
   threeDaysBefore: boolean;
   oneDayBefore: boolean;
   dueDate: boolean;
   everyDayAfterDue: boolean;
 };
 
+/**
+ * Sends a text message to a user via Telegram Bot API
+ */
 export async function sendTelegramMessage(
   botToken: string,
   chatId: string,
-  message: string
+  message: string,
 ): Promise<{ success: boolean; description?: string }> {
   if (!botToken || !botToken.trim()) {
     return { success: false, description: "No bot token configured in Settings." };
   }
   if (!chatId || !chatId.trim()) {
-    return { success: false, description: "Tenant has no Telegram username/Chat ID." };
+    return { success: false, description: "Tenant has no Telegram username or Chat ID." };
   }
 
-  const cleanChatId = chatId.trim();
+  let cleanChatId = chatId.trim();
+  // Ensure username starts with @ if non-numeric
+  if (!cleanChatId.startsWith("@") && isNaN(Number(cleanChatId))) {
+    cleanChatId = `@${cleanChatId}`;
+  }
+
   const cleanToken = botToken.trim();
 
   try {
-    const response = await fetch(`https://api.telegram.org/bot${cleanToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: cleanChatId,
-        text: message,
-        parse_mode: "HTML",
-      }),
-    });
+    const response = await fetch(
+      `https://api.telegram.org/bot${cleanToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: cleanChatId,
+          text: message,
+        }),
+      },
+    );
     const result = await response.json();
     if (result.ok) {
       return { success: true };
@@ -58,26 +76,24 @@ export async function sendTelegramMessage(
   }
 }
 
-export function calculateDaysUntilDue(dueDateStr: string): number {
-  if (!dueDateStr) return 999;
-  const due = new Date(dueDateStr);
-  const now = new Date();
-  const dueUtc = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate());
-  const nowUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((dueUtc - nowUtc) / (1000 * 60 * 60 * 24));
-}
-
-export async function checkAndSendAutoReminders(
+/**
+ * Core automated Telegram rent reminder dispatcher:
+ * - Checks rent due date (configured for the first week of the Ethiopian month, ending on Day 7).
+ * - Automatically dispatches reminder notifications at exactly 7 days, 5 days, and 3 days prior to due date.
+ * - Formats message using:
+ *   "Hello [Tenant Name], this is a friendly reminder that your rent payment for [Unit Name/Number] is due in [X] days on [Due Date in Ethiopian Calendar]. Please ensure payment is completed on time."
+ * - Flags reminders by tenant ID, billing cycle (e.g. 2019_1), and threshold (7d, 5d, 3d) to ensure they are sent once per cycle.
+ */
+export async function checkAndSendAutomatedTelegramReminders(
   tenants: TenantReminderInfo[],
   botToken: string,
-  enabled: boolean,
-  daysConfig: NotificationDaysConfig
+  currentDate: Date = new Date(),
 ): Promise<number> {
-  if (!enabled || !botToken || !botToken.trim() || tenants.length === 0) {
+  if (!botToken || !botToken.trim() || !tenants || tenants.length === 0) {
     return 0;
   }
 
-  let sentLog: Record<string, boolean> = {};
+  let sentLog: Record<string, string | boolean> = {};
   try {
     const raw = await AsyncStorage.getItem(SENT_REMINDERS_KEY);
     if (raw) sentLog = JSON.parse(raw);
@@ -85,57 +101,68 @@ export async function checkAndSendAutoReminders(
     sentLog = {};
   }
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const dueInfo = getEthiopianRentCycleDueInfo(currentDate);
+  const daysUntilDue = dueInfo.daysUntilDue;
+
+  // Only dispatch at exactly 7 days, 5 days, or 3 days prior
+  if (daysUntilDue !== 7 && daysUntilDue !== 5 && daysUntilDue !== 3) {
+    return 0;
+  }
+
   let sentCount = 0;
 
   for (const tenant of tenants) {
+    // Skip paid tenants or tenants without Telegram handle
     if (tenant.paid) continue;
     if (!tenant.telegramUsername || !tenant.telegramUsername.trim()) continue;
 
-    const days = calculateDaysUntilDue(tenant.dueDate);
-    let reminderType: string | null = null;
+    // Unique per-cycle threshold tracking key
+    const cycleTrackingKey = `tg_remind_${tenant.id}_${dueInfo.cycleKey}_${daysUntilDue}d`;
 
-    if (days === 7 && daysConfig.sevenDaysBefore) {
-      reminderType = "7_days_before";
-    } else if (days === 3 && daysConfig.threeDaysBefore) {
-      reminderType = "3_days_before";
-    } else if (days === 1 && daysConfig.oneDayBefore) {
-      reminderType = "1_day_before";
-    } else if (days === 0 && daysConfig.dueDate) {
-      reminderType = "due_date";
-    } else if (days < 0 && daysConfig.everyDayAfterDue) {
-      reminderType = "overdue";
+    // Ensure reminder for this threshold (7, 5, or 3 days) is sent only once per billing cycle
+    if (sentLog[cycleTrackingKey]) {
+      continue;
     }
 
-    if (!reminderType) continue;
+    const message = buildTelegramReminderMessage(
+      tenant.fullName,
+      tenant.shopNumber,
+      daysUntilDue,
+      dueInfo.ethDueDateFormatted,
+    );
 
-    const logKey = `${tenant.id}_${reminderType}_${todayStr}`;
-    if (sentLog[logKey]) continue;
+    const res = await sendTelegramMessage(
+      botToken,
+      tenant.telegramUsername,
+      message,
+    );
 
-    const formattedAmount = `ETB ${tenant.rentAmount.toLocaleString()}`;
-    const formattedDate = new Date(tenant.dueDate).toLocaleDateString();
-
-    let text = "";
-    if (days > 0) {
-      text = `⏰ <b>Rent Payment Reminder</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${formattedAmount}</b> is due in <b>${days} day${days === 1 ? "" : "s"}</b> (on ${formattedDate}).\n\nPlease make your payment on time. Thank you!`;
-    } else if (days === 0) {
-      text = `🔔 <b>Rent Due Today!</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${formattedAmount}</b> is due <b>TODAY (${formattedDate})</b>.\n\nPlease complete your payment today. Thank you!`;
-    } else {
-      text = `⚠️ <b>Rent Overdue Notice</b>\n\nHello <b>${tenant.fullName}</b>,\nYour rental payment of <b>${formattedAmount}</b> was due on ${formattedDate} and is currently <b>${Math.abs(days)} day(s) overdue</b>.\n\nPlease settle your payment immediately.`;
-    }
-
-    const res = await sendTelegramMessage(botToken, tenant.telegramUsername, text);
     if (res.success) {
-      sentLog[logKey] = true;
+      sentLog[cycleTrackingKey] = new Date().toISOString();
       sentCount++;
     }
   }
 
-  try {
-    await AsyncStorage.setItem(SENT_REMINDERS_KEY, JSON.stringify(sentLog));
-  } catch {
-    // ignore
+  if (sentCount > 0) {
+    try {
+      await AsyncStorage.setItem(SENT_REMINDERS_KEY, JSON.stringify(sentLog));
+    } catch {
+      // ignore
+    }
   }
 
   return sentCount;
+}
+
+/**
+ * Legacy compatibility wrapper that forwards to the Ethiopian automated reminder engine
+ */
+export async function checkAndSendAutoReminders(
+  tenants: TenantReminderInfo[],
+  botToken: string,
+  enabled: boolean,
+  _daysConfig?: NotificationDaysConfig,
+): Promise<number> {
+  if (!enabled) return 0;
+  return checkAndSendAutomatedTelegramReminders(tenants, botToken);
 }

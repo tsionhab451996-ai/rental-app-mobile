@@ -1,20 +1,30 @@
-import { Link, Stack } from "expo-router";
-import { useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
+import { Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
+import { useProperty } from "@/contexts/PropertyContext";
 import { useTenants } from "@/contexts/TenantContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import {
+  calculateTenantRentStatus,
+  getEthiopianScheduleShort,
+} from "@/utils/ethiopianCalendar";
+
+const formatCurrency = (value: number) => `ETB ${value.toLocaleString()}`;
 
 const daysUntilDue = (dueDate: string) => {
   return Math.ceil(
@@ -22,22 +32,25 @@ const daysUntilDue = (dueDate: string) => {
   );
 };
 
-const formatCurrency = (value: number) => `ETB ${value.toFixed(2)}`;
-
-type SortKey = "fullName" | "shopNumber" | "rentAmount" | "status";
+type FilterStatus = "all" | "paid" | "pending" | "overdue";
+type SortKey = "fullName" | "shopNumber" | "rentAmount";
 
 export default function TenantsScreen() {
   const { tenants, loading } = useTenants();
+  const { selectedProperty } = useProperty();
   const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
+  const colors = Colors[colorScheme];
+  const isDark = colorScheme === "dark";
+
   const [search, setSearch] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [sortKey, setSortKey] = useState<SortKey>("fullName");
   const [sortAsc, setSortAsc] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 500));
     setRefreshing(false);
   }, []);
 
@@ -50,169 +63,415 @@ export default function TenantsScreen() {
     }
   };
 
-  const filtered = (search.trim()
-    ? tenants.filter(
-        (t) =>
-          t.fullName.toLowerCase().includes(search.toLowerCase()) ||
-          t.shopNumber.toLowerCase().includes(search.toLowerCase()) ||
-          t.phoneNumber.includes(search),
-      )
-    : tenants
-  ).sort((a, b) => {
-    let cmp = 0;
-    if (sortKey === "fullName") cmp = a.fullName.localeCompare(b.fullName);
-    else if (sortKey === "shopNumber") cmp = a.shopNumber.localeCompare(b.shopNumber);
-    else if (sortKey === "rentAmount") cmp = a.rentAmount - b.rentAmount;
-    else if (sortKey === "status") {
-      const aPaid = a.paid ? 0 : daysUntilDue(a.dueDate) < 0 ? 1 : 2;
-      const bPaid = b.paid ? 0 : daysUntilDue(b.dueDate) < 0 ? 1 : 2;
-      cmp = aPaid - bPaid;
-    }
-    return sortAsc ? cmp : -cmp;
-  });
+  const scopedPropertyTenants = tenants.filter(
+    (t) => t.property === selectedProperty,
+  );
 
-  const sortIcon = (key: SortKey) =>
-    sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
+  const filtered = scopedPropertyTenants
+    .filter((t) => {
+      const rentStatus = calculateTenantRentStatus(t.paid);
+      if (filterStatus === "paid" && rentStatus.status !== "Paid") return false;
+      if (filterStatus === "pending" && rentStatus.status !== "Pending") return false;
+      if (filterStatus === "overdue" && rentStatus.status !== "Overdue") return false;
+
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        t.fullName.toLowerCase().includes(q) ||
+        t.shopNumber.toLowerCase().includes(q) ||
+        (t.phoneNumber && t.phoneNumber.includes(q)) ||
+        (t.businessType && t.businessType.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "fullName") cmp = a.fullName.localeCompare(b.fullName);
+      else if (sortKey === "shopNumber") cmp = a.shopNumber.localeCompare(b.shopNumber);
+      else if (sortKey === "rentAmount") cmp = a.rentAmount - b.rentAmount;
+      return sortAsc ? cmp : -cmp;
+    });
 
   if (loading) {
     return (
-      <ThemedView style={styles.centered}>
-        <Stack.Screen options={{ title: "Tenant Management" }} />
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
-      </ThemedView>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: "Tenant Management" }} />
-      <View style={styles.header}>
-        <TextInput
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title="Tenants"
+        subtitle={`${filtered.length} active occupants in ${selectedProperty}`}
+        rightAction={
+          <Link href="/tenant-form" asChild>
+            <ScalePressable
+              style={[styles.addBtn, { backgroundColor: colors.tint }]}
+            >
+              <Ionicons name="person-add" size={16} color="#FFFFFF" />
+              <Text style={styles.addBtnText}>Add Tenant</Text>
+            </ScalePressable>
+          </Link>
+        }
+      >
+        {/* Search Bar */}
+        <View
           style={[
-            styles.searchInput,
+            styles.searchBar,
             {
-              color: colors.text,
-              borderColor: colors.icon,
-              backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+              backgroundColor: isDark ? "#0F172A" : "#F1F5F9",
+              borderColor: colors.border,
             },
           ]}
-          placeholder="Search by name, shop, or phone..."
-          placeholderTextColor={colors.icon}
-          value={search}
-          onChangeText={setSearch}
-          autoCapitalize="none"
-        />
-        <Link href="/tenant-form" asChild>
+        >
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={colors.icon}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search tenant name, unit #, phone..."
+            placeholderTextColor={colors.icon}
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch("")} style={styles.clearSearch}>
+              <Ionicons name="close-circle" size={18} color={colors.icon} />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Filter Chips */}
+        <View style={styles.chipRow}>
+          {(["all", "paid", "pending", "overdue"] as const).map((st) => {
+            const active = filterStatus === st;
+            const label =
+              st === "all"
+                ? "All"
+                : st === "paid"
+                ? "Paid"
+                : st === "pending"
+                ? "Pending"
+                : "Overdue";
+            return (
+              <Pressable
+                key={st}
+                onPress={() => setFilterStatus(st)}
+                style={[
+                  styles.filterChip,
+                  active
+                    ? [styles.filterChipActive, { backgroundColor: colors.tint }]
+                    : [
+                        styles.filterChipInactive,
+                        {
+                          backgroundColor: isDark ? "#1E293B" : "#FFFFFF",
+                          borderColor: colors.border,
+                        },
+                      ],
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    {
+                      color: active
+                        ? "#FFFFFF"
+                        : isDark
+                        ? "#94A3B8"
+                        : "#64748B",
+                      fontWeight: active ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+
           <Pressable
-            style={[styles.addButton, { backgroundColor: colors.tint }]}
+            onPress={() => toggleSort("fullName")}
+            style={[
+              styles.sortBtn,
+              {
+                backgroundColor: isDark ? "#1E293B" : "#FFFFFF",
+                borderColor: colors.border,
+              },
+            ]}
           >
-            <ThemedText style={styles.addButtonText}>+ Add</ThemedText>
+            <Ionicons name="swap-vertical" size={14} color={colors.icon} />
+            <Text style={[styles.sortBtnText, { color: colors.textSecondary }]}>
+              Name {sortKey === "fullName" ? (sortAsc ? "▲" : "▼") : ""}
+            </Text>
           </Pressable>
-        </Link>
-      </View>
+        </View>
+      </ScreenHeader>
 
       <ScrollView
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.tint} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.tint}
+          />
         }
       >
         {filtered.length === 0 ? (
-          <View style={styles.empty}>
-            <ThemedText style={{ opacity: 0.5, textAlign: "center" }}>
-              {tenants.length === 0
-                ? "No tenants yet. Tap + Add to get started."
-                : "No tenants match your search."}
-            </ThemedText>
-          </View>
-        ) : (
-          <View style={styles.sortBar}>
-            {([
-              ["fullName", "Name"],
-              ["shopNumber", "Shop"],
-              ["rentAmount", "Rent"],
-              ["status", "Status"],
-            ] as const).map(([key, label]) => (
-              <Pressable key={key} onPress={() => toggleSort(key)}>
-                <ThemedText
+          <View style={styles.emptyContainer}>
+            <Ionicons
+              name="people-outline"
+              size={48}
+              color={colors.icon}
+              style={{ opacity: 0.5, marginBottom: 12 }}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              No Tenants Found
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {scopedPropertyTenants.length === 0
+                ? `No tenants added yet in ${selectedProperty}. Tap '+ Add Tenant' below to create one.`
+                : "No tenant profiles match your filter or search query."}
+            </Text>
+            {scopedPropertyTenants.length === 0 && (
+              <Link href="/tenant-form" asChild>
+                <ScalePressable
                   style={[
-                    styles.sortChip,
-                    sortKey === key && { color: colors.tint, fontWeight: "700" },
+                    styles.addBtn,
+                    { backgroundColor: colors.tint, marginTop: 16, paddingHorizontal: 16, paddingVertical: 10 },
                   ]}
                 >
-                  {label}{sortIcon(key)}
-                </ThemedText>
-              </Pressable>
-            ))}
+                  <Ionicons name="person-add" size={16} color="#FFFFFF" />
+                  <Text style={styles.addBtnText}>Add Tenant</Text>
+                </ScalePressable>
+              </Link>
+            )}
           </View>
-        )}
+        ) : (
+          filtered.map((tenant) => {
+            const dueIn = daysUntilDue(tenant.dueDate);
+            const isOverdue = !tenant.paid && dueIn < 0;
 
-        {filtered.map((tenant) => {
-          const dueIn = daysUntilDue(tenant.dueDate);
-          const dueLabel = tenant.paid
-            ? "Paid"
-            : dueIn < 0
-              ? `Overdue ${Math.abs(dueIn)}d`
-              : `Due ${dueIn}d`;
+            const initials = tenant.fullName
+              .split(" ")
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((n) => n[0].toUpperCase())
+              .join("");
 
-          return (
-            <Link
-              key={tenant.id}
-              href={`/tenant-detail?id=${tenant.id}`}
-              asChild
-            >
-              <Pressable
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor:
-                      colorScheme === "dark" ? "#1c1c1e" : "#fff",
-                    borderColor: colors.icon + "30",
-                  },
-                ]}
+            return (
+              <Link
+                key={tenant.id}
+                href={`/tenant-detail?id=${tenant.id}`}
+                asChild
               >
-                <View style={styles.cardTop}>
-                  <View style={styles.cardInfo}>
-                    <ThemedText style={styles.tenantName}>
-                      {tenant.fullName}
-                    </ThemedText>
-                    <ThemedText style={styles.tenantMeta}>
-                      Shop {tenant.shopNumber}
-                      {tenant.businessType ? ` · ${tenant.businessType}` : ""}
-                    </ThemedText>
+                <ScalePressable
+                  style={[
+                    styles.tenantCard,
+                    {
+                      backgroundColor: isDark ? "#151F32" : "#FFFFFF",
+                      borderColor: isDark ? "#23324D" : "#E2E8F0",
+                    },
+                  ]}
+                >
+                  <View style={styles.cardMain}>
+                    {/* Avatar Initials */}
+                    <View
+                      style={[
+                        styles.avatar,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(59, 130, 246, 0.2)"
+                            : "#EFF6FF",
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.avatarText, { color: colors.tint }]}>
+                        {initials || "T"}
+                      </Text>
+                    </View>
+
+                    {/* Tenant Details */}
+                    <View style={styles.infoCol}>
+                      <View style={styles.titleRow}>
+                        <Text
+                          style={[styles.tenantName, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {tenant.fullName}
+                        </Text>
+                        {/* Status Pill */}
+                        {(() => {
+                          const rentStatus = calculateTenantRentStatus(tenant.paid);
+                          const pillBg =
+                            rentStatus.status === "Paid"
+                              ? isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5"
+                              : rentStatus.status === "Pending"
+                              ? isDark ? "rgba(245, 158, 11, 0.15)" : "#FFFBEB"
+                              : isDark ? "rgba(239, 68, 68, 0.16)" : "#FEF2F2";
+                          const pillColor =
+                            rentStatus.status === "Paid"
+                              ? "#10B981"
+                              : rentStatus.status === "Pending"
+                              ? isDark ? "#FBBF24" : "#D97706"
+                              : isDark ? "#F87171" : "#EF4444";
+
+                          return (
+                            <View
+                              style={[
+                                styles.statusPill,
+                                { backgroundColor: pillBg },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.statusPillText,
+                                  { color: pillColor },
+                                ]}
+                              >
+                                {rentStatus.badgeLabel}
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
+
+                      {/* Meta Tags */}
+                      <View style={styles.metaRow}>
+                        <View
+                          style={[
+                            styles.unitChip,
+                            {
+                              backgroundColor: isDark
+                                ? "#1E293B"
+                                : "#F1F5F9",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.unitChipText,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            Unit {tenant.shopNumber}
+                          </Text>
+                        </View>
+                        {tenant.businessType ? (
+                          <Text
+                            style={[
+                              styles.businessType,
+                              { color: colors.textSecondary },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            · {tenant.businessType}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {tenant.leasePeriod ? (
+                        <View style={styles.leaseRow}>
+                          <Ionicons name="calendar-outline" size={11} color={colors.textSecondary} />
+                          <Text style={[styles.leasePeriodText, { color: colors.textSecondary }]}>
+                            {tenant.leasePeriod}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
+
+                  {/* Card Footer with Quick Contact Actions & Rent */}
                   <View
                     style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor: tenant.paid
-                          ? "#4CAF50"
-                          : dueIn < 0
-                            ? "#E53935"
-                            : "#FB8C00",
-                      },
+                      styles.cardFooter,
+                      { borderTopColor: isDark ? "#1E293B" : "#F1F5F9" },
                     ]}
                   >
-                    <ThemedText style={styles.statusText}>
-                      {dueLabel}
-                    </ThemedText>
+                    <View>
+                      <Text
+                        style={[
+                          styles.rentLabel,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Rent Due • {getEthiopianScheduleShort()}
+                      </Text>
+                      <Text style={[styles.rentValue, { color: colors.text }]}>
+                        {formatCurrency(tenant.rentAmount)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.actionButtonsRow}>
+                      {tenant.phoneNumber ? (
+                        <Pressable
+                          style={[
+                            styles.contactBtn,
+                            {
+                              backgroundColor: isDark
+                                ? "#1E293B"
+                                : "#F1F5F9",
+                            },
+                          ]}
+                          onPress={() =>
+                            Linking.openURL(`tel:${tenant.phoneNumber}`)
+                          }
+                        >
+                          <Ionicons
+                            name="call-outline"
+                            size={16}
+                            color={colors.tint}
+                          />
+                        </Pressable>
+                      ) : null}
+
+                      {tenant.telegramUsername ? (
+                        <Pressable
+                          style={[
+                            styles.contactBtn,
+                            {
+                              backgroundColor: isDark
+                                ? "#1E293B"
+                                : "#F1F5F9",
+                            },
+                          ]}
+                          onPress={() =>
+                            Linking.openURL(
+                              `https://t.me/${tenant.telegramUsername.replace("@", "")}`,
+                            )
+                          }
+                        >
+                          <Ionicons
+                            name="paper-plane-outline"
+                            size={16}
+                            color="#38BDF8"
+                          />
+                        </Pressable>
+                      ) : null}
+
+                      <View style={styles.cardArrow}>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={18}
+                          color={colors.icon}
+                        />
+                      </View>
+                    </View>
                   </View>
-                </View>
-                <View style={styles.cardBottom}>
-                  <ThemedText style={styles.rentText}>
-                    {formatCurrency(tenant.rentAmount)}
-                  </ThemedText>
-                  <ThemedText style={styles.phoneText}>
-                    {tenant.phoneNumber || "—"}
-                  </ThemedText>
-                </View>
-              </Pressable>
-            </Link>
-          );
-        })}
+                </ScalePressable>
+              </Link>
+            );
+          })
+        )}
       </ScrollView>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -222,100 +481,205 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
   },
-  header: {
+  addBtn: {
     flexDirection: "row",
-    gap: 10,
-    padding: 16,
-    paddingBottom: 8,
     alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  addBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 15,
+    fontSize: 14,
+    height: "100%",
   },
-  addButton: {
+  clearSearch: {
+    padding: 4,
+  },
+  chipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  filterChipActive: {},
+  filterChipInactive: {
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 12,
+  },
+  sortBtn: {
+    marginLeft: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sortBtnText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  listContent: {
+    padding: 16,
+    gap: 12,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 60,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  tenantCard: {
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+  },
+  cardMain: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+  },
+  avatar: {
+    width: 44,
     height: 44,
-    borderRadius: 12,
-    paddingHorizontal: 18,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  addButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
+  avatarText: {
+    fontSize: 16,
+    fontWeight: "800",
   },
-  list: {
-    padding: 16,
-    paddingTop: 8,
-    paddingBottom: 32,
-    gap: 10,
-  },
-  empty: {
-    marginTop: 60,
-    alignItems: "center",
-  },
-  sortBar: {
-    flexDirection: "row",
-    gap: 16,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  sortChip: {
-    fontSize: 13,
-    opacity: 0.6,
-  },
-  card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    gap: 10,
-  },
-  cardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  cardInfo: {
+  infoCol: {
     flex: 1,
-    gap: 2,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
   },
   tenantName: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  tenantMeta: {
-    fontSize: 13,
-    opacity: 0.6,
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  cardBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  rentText: {
     fontSize: 16,
     fontWeight: "700",
+    letterSpacing: -0.3,
+    flex: 1,
+    marginRight: 8,
   },
-  phoneText: {
-    fontSize: 13,
-    opacity: 0.6,
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  unitChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  unitChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  businessType: {
+    fontSize: 12,
+    fontWeight: "500",
+    flex: 1,
+  },
+  leaseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  leasePeriodText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  rentLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  rentValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 1,
+  },
+  actionButtonsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  contactBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardArrow: {
+    marginLeft: 4,
   },
 });

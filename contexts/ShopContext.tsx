@@ -7,6 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PropertyName } from "./PropertyContext";
+import {
+  ZENEBEWORK_SHOPS,
+  CMC_SHOPS,
+  AYAT_SHOPS,
+} from "@/constants/zenebeworkData";
 
 export type Shop = {
   id: string;
@@ -18,8 +24,9 @@ export type Shop = {
   waterFee: number;
   electricityFee: number;
   description: string;
-  status: "occupied" | "vacant";
+  status: "occupied" | "vacant" | "facility";
   tenantName: string;
+  property?: PropertyName;
 };
 
 type ShopContextType = {
@@ -53,11 +60,33 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   async function loadShops() {
     try {
       const json = await AsyncStorage.getItem(STORAGE_KEY);
+      const defaultSeeds = [...ZENEBEWORK_SHOPS, ...CMC_SHOPS, ...AYAT_SHOPS];
+
       if (json) {
-        setShops(JSON.parse(json));
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Keep user-created custom shops that aren't seed IDs or pre-populated CMC mock units
+          const userCustomShops = parsed.filter(
+            (s: Shop) =>
+              !s.id.startsWith("zen-") &&
+              !s.id.startsWith("cmc-") &&
+              !s.id.startsWith("ayt-") &&
+              !["cmc-s-1", "cmc-s-2", "cmc-s-3", "1", "2", "3"].includes(s.id) &&
+              s.shopName !== "Tech Solutions" &&
+              s.shopName !== "Heights Pharmacy" &&
+              s.shopName !== "Executive Suite 103",
+          );
+          // Always ensure the official Zenebework 28 units and isolated property seeds are active
+          const merged = [...ZENEBEWORK_SHOPS, ...CMC_SHOPS, ...AYAT_SHOPS, ...userCustomShops];
+          setShops(merged);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          return;
+        }
       }
+      setShops(defaultSeeds);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSeeds));
     } catch {
-      // ignore
+      setShops([...ZENEBEWORK_SHOPS, ...CMC_SHOPS, ...AYAT_SHOPS]);
     } finally {
       setLoading(false);
     }

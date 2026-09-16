@@ -7,6 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PropertyName } from "./PropertyContext";
+import {
+  ZENEBEWORK_PAYMENTS,
+  CMC_PAYMENTS,
+  AYAT_PAYMENTS,
+} from "@/constants/zenebeworkData";
 
 export type PaymentStatus = "paid" | "unpaid" | "overdue" | "partial";
 
@@ -25,6 +31,7 @@ export type Payment = {
   notes: string;
   status: PaymentStatus;
   createdAt: string;
+  property?: PropertyName;
 };
 
 type PaymentContextType = {
@@ -59,11 +66,32 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   async function loadPayments() {
     try {
       const json = await AsyncStorage.getItem(STORAGE_KEY);
+      const defaultSeeds = [...ZENEBEWORK_PAYMENTS, ...CMC_PAYMENTS, ...AYAT_PAYMENTS];
+
       if (json) {
-        setPayments(JSON.parse(json));
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Keep user-created custom payments that aren't seed IDs or pre-populated CMC mock payments
+          const userCustomPayments = parsed.filter(
+            (p: Payment) =>
+              !p.id.startsWith("zen-pay-") &&
+              !p.id.startsWith("cmc-pay-") &&
+              !p.id.startsWith("ayt-pay-") &&
+              !["cmc-pay-1", "cmc-pay-2", "1", "2", "3"].includes(p.id) &&
+              p.tenantName !== "Ermias Bekele" &&
+              p.tenantName !== "Dr. Bethlehem Alemu",
+          );
+          // Always ensure the official Zenebework 22 payments (234,000 ETB) and isolated property seeds are active
+          const merged = [...ZENEBEWORK_PAYMENTS, ...CMC_PAYMENTS, ...AYAT_PAYMENTS, ...userCustomPayments];
+          setPayments(merged);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          return;
+        }
       }
+      setPayments(defaultSeeds);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSeeds));
     } catch {
-      // ignore
+      setPayments([...ZENEBEWORK_PAYMENTS, ...CMC_PAYMENTS, ...AYAT_PAYMENTS]);
     } finally {
       setLoading(false);
     }

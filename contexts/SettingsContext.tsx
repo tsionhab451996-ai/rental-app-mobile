@@ -16,6 +16,7 @@ export type NotificationSettings = {
   telegramBotUsername: string;
   reminderDays: {
     sevenDaysBefore: boolean;
+    fiveDaysBefore: boolean;
     threeDaysBefore: boolean;
     oneDayBefore: boolean;
     dueDate: boolean;
@@ -36,6 +37,8 @@ export type SecuritySettings = {
   fingerprintEnabled: boolean;
 };
 
+export type ThemeMode = "system" | "light" | "dark";
+
 export type AppearanceSettings = {
   darkMode: boolean | null;
   language: string;
@@ -51,6 +54,8 @@ export type Settings = {
 type SettingsContextType = {
   settings: Settings;
   loading: boolean;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => Promise<void>;
   updateProfile: (updates: Partial<ProfileSettings>) => Promise<void>;
   updateNotifications: (updates: Partial<NotificationSettings>) => Promise<void>;
   updateNotificationDays: (updates: Partial<NotificationSettings["reminderDays"]>) => Promise<void>;
@@ -75,9 +80,10 @@ const defaultSettings: Settings = {
     enableSMS: false,
     reminderTime: "09:00",
     telegramBotToken: "8827608355:AAEyPcgE_L6hi2qhjJk6gOcLrz2dTK2jWcM",
-    telegramBotUsername: "",
+    telegramBotUsername: "@RentalYoheBot",
     reminderDays: {
       sevenDaysBefore: true,
+      fiveDaysBefore: true,
       threeDaysBefore: true,
       oneDayBefore: true,
       dueDate: true,
@@ -125,6 +131,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           notifications: {
             ...prev.notifications,
             ...parsed.notifications,
+            telegramBotToken:
+              parsed.notifications?.telegramBotToken?.trim() ||
+              "8827608355:AAEyPcgE_L6hi2qhjJk6gOcLrz2dTK2jWcM",
+            telegramBotUsername:
+              parsed.notifications?.telegramBotUsername?.trim() ||
+              "@RentalYoheBot",
             reminderDays: {
               ...prev.notifications.reminderDays,
               ...(parsed.notifications?.reminderDays ?? {}),
@@ -178,6 +190,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const themeMode: ThemeMode =
+    settings.appearance.darkMode === null
+      ? "system"
+      : settings.appearance.darkMode
+      ? "dark"
+      : "light";
+
+  const setThemeMode = useCallback(async (mode: ThemeMode) => {
+    const darkModeValue = mode === "system" ? null : mode === "dark";
+    setSettings((prev) => ({
+      ...prev,
+      appearance: { ...prev.appearance, darkMode: darkModeValue },
+    }));
+  }, []);
+
   const updateAppearance = useCallback(async (updates: Partial<AppearanceSettings>) => {
     setSettings((prev) => ({
       ...prev,
@@ -208,6 +235,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       value={{
         settings,
         loading,
+        themeMode,
+        setThemeMode,
         updateProfile,
         updateNotifications,
         updateNotificationDays,

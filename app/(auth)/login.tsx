@@ -1,5 +1,4 @@
-import { Link, Stack } from "expo-router";
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,31 +7,39 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
+import { Link, Stack } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
+import { BrandLogo } from "@/components/ui/brand-logo";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const { login, rememberedEmail } = useAuth();
   const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
+  const colors = Colors[colorScheme];
   const isDark = colorScheme === "dark";
 
   const [emailOrUsername, setEmailOrUsername] = useState(rememberedEmail ?? "");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(!!rememberedEmail);
   const [loading, setLoading] = useState(false);
 
+  const topInset = Math.max(insets.top, Platform.OS === "android" ? 24 : 0);
+
   async function handleLogin() {
     if (!emailOrUsername.trim() || !password.trim()) {
-      Alert.alert("Error", "Please fill in all fields.");
+      Alert.alert("Required", "Please enter your username/email and password.");
       return;
     }
     setLoading(true);
@@ -45,77 +52,119 @@ export default function LoginScreen() {
     }
   }
 
-  const inputStyle = [
-    styles.input,
-    {
-      color: colors.text,
-      borderColor: colors.border,
-      backgroundColor: isDark ? "#1E293B" : "#F1F5F9",
-    },
-  ];
-
   return (
-    <ThemedView style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 }]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
         >
+          {/* Branded Hero Header */}
           <LinearGradient
-            colors={isDark ? ["#1E3A5F", "#0F172A"] : ["#2563EB", "#1D4ED8"]}
+            colors={
+              isDark
+                ? ["#0b1219", "#0e1722", "#132130"]
+                : ["#0b1219", "#112032", "#193555"]
+            }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.heroSection}
+            style={[styles.heroSection, { paddingTop: topInset + 20 }]}
           >
-            <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <ThemedText style={styles.logoText}>R</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.heroTitle}>RentalApp</ThemedText>
-            <ThemedText style={styles.heroSubtitle}>
-              Manage your rentals with ease
-            </ThemedText>
+            <BrandLogo size="lg" />
+            <Text style={styles.heroTitle}>RentalApp</Text>
+            <Text style={styles.heroSubtitle}>
+              Property & Tenant Management
+            </Text>
           </LinearGradient>
 
+          {/* Form Container */}
           <View style={styles.formSection}>
-            <ThemedText style={styles.welcomeTitle}>Welcome back</ThemedText>
-            <ThemedText style={styles.welcomeSubtitle}>
-              Sign in to your account
-            </ThemedText>
+            <Text style={[styles.welcomeTitle, { color: colors.text }]}>
+              Welcome back
+            </Text>
+            <Text style={[styles.welcomeSubtitle, { color: colors.textSecondary }]}>
+              Sign in to manage your rental properties
+            </Text>
 
             <View style={styles.form}>
+              {/* Username / Email Input */}
               <View style={styles.inputGroup}>
-                <ThemedText style={styles.label}>Email or Username</ThemedText>
-                <TextInput
-                  style={inputStyle}
-                  placeholder="Enter email or username"
-                  placeholderTextColor={colors.icon}
-                  value={emailOrUsername}
-                  onChangeText={setEmailOrUsername}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Email or Username
+                </Text>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: isDark ? "#151F32" : "#FFFFFF",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={colors.icon}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder="Enter email or username"
+                    placeholderTextColor={colors.icon}
+                    value={emailOrUsername}
+                    onChangeText={setEmailOrUsername}
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
 
+              {/* Password Input */}
               <View style={styles.inputGroup}>
-                <ThemedText style={styles.label}>Password</ThemedText>
-                <TextInput
-                  style={inputStyle}
-                  placeholder="Enter password"
-                  placeholderTextColor={colors.icon}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Password
+                </Text>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: isDark ? "#151F32" : "#FFFFFF",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={colors.icon}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder="Enter password"
+                    placeholderTextColor={colors.icon}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeBtn}
+                  >
+                    <Ionicons
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={18}
+                      color={colors.icon}
+                    />
+                  </Pressable>
+                </View>
               </View>
 
+              {/* Options Row */}
               <View style={styles.optionsRow}>
                 <Pressable
                   style={styles.rememberMeRow}
@@ -125,52 +174,62 @@ export default function LoginScreen() {
                     style={[
                       styles.checkbox,
                       {
-                        borderColor: colors.tint,
+                        borderColor: rememberMe ? colors.tint : colors.border,
                         backgroundColor: rememberMe ? colors.tint : "transparent",
                       },
                     ]}
                   >
                     {rememberMe && (
-                      <ThemedText style={styles.checkmark}>✓</ThemedText>
+                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
                     )}
                   </View>
-                  <ThemedText style={styles.rememberMeText}>Remember me</ThemedText>
+                  <Text
+                    style={[styles.rememberMeText, { color: colors.textSecondary }]}
+                  >
+                    Remember me
+                  </Text>
                 </Pressable>
 
                 <Link href="/(auth)/forgot-password" asChild>
-                  <Pressable>
-                    <ThemedText style={styles.forgotText}>Forgot password?</ThemedText>
+                  <Pressable hitSlop={8}>
+                    <Text style={[styles.forgotText, { color: colors.tint }]}>
+                      Forgot password?
+                    </Text>
                   </Pressable>
                 </Link>
               </View>
 
-              <Pressable
+              {/* Submit Button */}
+              <ScalePressable
                 style={[styles.button, { backgroundColor: colors.tint }]}
                 onPress={handleLogin}
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <ThemedText style={styles.buttonText}>Sign In</ThemedText>
+                  <Text style={styles.buttonText}>Sign In</Text>
                 )}
-              </Pressable>
+              </ScalePressable>
             </View>
 
+            {/* Footer Links */}
             <View style={styles.footer}>
-              <ThemedText style={styles.footerText}>
+              <Text style={[styles.footerText, { color: colors.textSecondary }]}>
                 {"Don't have an account? "}
-              </ThemedText>
+              </Text>
               <Link href="/(auth)/register" replace asChild>
                 <Pressable hitSlop={12}>
-                  <ThemedText style={styles.footerLink}>Sign Up</ThemedText>
+                  <Text style={[styles.footerLink, { color: colors.tint }]}>
+                    Sign Up
+                  </Text>
                 </Pressable>
               </Link>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -185,75 +244,75 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   heroSection: {
-    paddingTop: 80,
-    paddingBottom: 48,
+    paddingBottom: 36,
     paddingHorizontal: 24,
     alignItems: "center",
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
-  },
-  logoContainer: {
-    marginBottom: 16,
-  },
-  logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.3)",
-  },
-  logoText: {
-    color: "#fff",
-    fontSize: 36,
-    fontWeight: "800",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
   },
   heroTitle: {
-    color: "#fff",
-    fontSize: 28,
+    color: "#FFFFFF",
+    fontSize: 26,
     fontWeight: "800",
-    marginBottom: 6,
+    letterSpacing: -0.5,
+    marginTop: 12,
+    marginBottom: 4,
   },
   heroSubtitle: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 15,
+    color: "rgba(255, 255, 255, 0.75)",
+    fontSize: 13,
+    fontWeight: "500",
   },
   formSection: {
     flex: 1,
     padding: 24,
-    paddingTop: 32,
+    paddingTop: 24,
   },
   welcomeTitle: {
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: -0.4,
     marginBottom: 4,
   },
   welcomeSubtitle: {
-    fontSize: 15,
-    opacity: 0.5,
-    marginBottom: 28,
+    fontSize: 14,
+    marginBottom: 24,
   },
   form: {
-    gap: 18,
+    gap: 16,
   },
   inputGroup: {
     gap: 6,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "600",
-    opacity: 0.7,
+    fontSize: 12,
+    fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  input: {
-    height: 52,
-    borderWidth: 1.5,
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 50,
+    borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    paddingHorizontal: 14,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    height: "100%",
+  },
+  eyeBtn: {
+    padding: 6,
   },
   optionsRow: {
     flexDirection: "row",
@@ -270,22 +329,16 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 6,
-    borderWidth: 2,
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkmark: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
   rememberMeText: {
-    fontSize: 14,
-    opacity: 0.7,
+    fontSize: 13,
+    fontWeight: "500",
   },
   forgotText: {
-    fontSize: 14,
-    color: "#2563EB",
+    fontSize: 13,
     fontWeight: "600",
   },
   button: {
@@ -293,30 +346,30 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 6,
+    marginTop: 8,
+    elevation: 3,
     shadowColor: "#2563EB",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 4,
   },
   buttonText: {
-    color: "#fff",
-    fontSize: 17,
+    color: "#FFFFFF",
+    fontSize: 16,
     fontWeight: "700",
+    letterSpacing: 0.2,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 32,
+    alignItems: "center",
+    marginTop: 24,
   },
   footerText: {
-    opacity: 0.5,
-    fontSize: 15,
+    fontSize: 14,
   },
   footerLink: {
-    color: "#2563EB",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
   },
 });

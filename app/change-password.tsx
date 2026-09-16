@@ -4,7 +4,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -13,11 +12,14 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ChangePasswordScreen() {
+  const insets = useSafeAreaInsets();
   const { changePassword } = useAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -62,9 +64,10 @@ export default function ChangePasswordScreen() {
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 160 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 24) + 40 }]}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
         >
           <ThemedText type="title" style={styles.title}>
             Change Password
@@ -81,8 +84,8 @@ export default function ChangePasswordScreen() {
                   styles.input,
                   {
                     color: colors.text,
-                    borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    borderColor: colors.inputBorder,
+                    backgroundColor: colors.inputBg,
                   },
                 ]}
                 placeholder="Enter current password"
@@ -100,8 +103,8 @@ export default function ChangePasswordScreen() {
                   styles.input,
                   {
                     color: colors.text,
-                    borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    borderColor: colors.inputBorder,
+                    backgroundColor: colors.inputBg,
                   },
                 ]}
                 placeholder="Enter new password"
@@ -119,8 +122,8 @@ export default function ChangePasswordScreen() {
                   styles.input,
                   {
                     color: colors.text,
-                    borderColor: colors.icon,
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5",
+                    borderColor: colors.inputBorder,
+                    backgroundColor: colors.inputBg,
                   },
                 ]}
                 placeholder="Confirm new password"
@@ -131,7 +134,7 @@ export default function ChangePasswordScreen() {
               />
             </View>
 
-            <Pressable
+            <ScalePressable
               style={[styles.button, { backgroundColor: colors.tint }]}
               onPress={handleChange}
               disabled={loading}
@@ -139,7 +142,7 @@ export default function ChangePasswordScreen() {
               <ThemedText style={styles.buttonText}>
                 {loading ? "Changing..." : "Change Password"}
               </ThemedText>
-            </Pressable>
+            </ScalePressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,10 +11,16 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { ScalePressable } from "@/components/ui/scale-pressable";
 import { Colors } from "@/constants/theme";
 import { usePayments } from "@/contexts/PaymentContext";
 import { useTenants } from "@/contexts/TenantContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  calculateTenantRentStatus,
+  getEthiopianPaymentSchedule,
+} from "@/utils/ethiopianCalendar";
 
 const formatCurrency = (value: number) => `ETB ${value.toFixed(2)}`;
 
@@ -27,10 +32,12 @@ const statusColors: Record<string, string> = {
 };
 
 export default function ApprovalsScreen() {
+  const insets = useSafeAreaInsets();
   const { payments, updatePayment, loading: paymentsLoading } = usePayments();
   const { updateTenant, tenants, loading: tenantsLoading } = useTenants();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const isDark = colorScheme === "dark";
   const [refreshing, setRefreshing] = useState(false);
 
   const loading = paymentsLoading || tenantsLoading;
@@ -92,7 +99,8 @@ export default function ApprovalsScreen() {
       <Stack.Screen options={{ title: "Approvals" }} />
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 24) + 32 }]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.tint} />
         }
@@ -113,13 +121,16 @@ export default function ApprovalsScreen() {
           </View>
         ) : (
           pendingPayments.map((payment) => {
-            const daysOverdue =
-              payment.status === "overdue"
-                ? Math.ceil(
-                    (Date.now() - new Date(payment.dueDate).getTime()) /
-                      (1000 * 60 * 60 * 24),
-                  )
-                : 0;
+            const ethStatus = calculateTenantRentStatus(payment.status === "paid", new Date());
+            const dueDisplay =
+              payment.dueDate &&
+              !payment.dueDate.includes("ቀን") &&
+              !isNaN(new Date(payment.dueDate).getTime())
+                ? new Date(payment.dueDate).toLocaleDateString()
+                : getEthiopianPaymentSchedule(new Date(), "both");
+            const overdueLabel = ethStatus.isOverdue
+              ? ` (${ethStatus.ethDate.day - 7} days overdue)`
+              : "";
 
             return (
               <View
@@ -127,8 +138,8 @@ export default function ApprovalsScreen() {
                 style={[
                   styles.card,
                   {
-                    backgroundColor: colorScheme === "dark" ? "#1c1c1e" : "#fff",
-                    borderColor: colors.icon + "30",
+                    backgroundColor: isDark ? "#151F32" : "#fff",
+                    borderColor: isDark ? "#23324D" : "#E2E8F0",
                   },
                 ]}
               >
@@ -189,8 +200,8 @@ export default function ApprovalsScreen() {
                 </View>
 
                 <ThemedText style={styles.metaText}>
-                  Due: {new Date(payment.dueDate).toLocaleDateString()}
-                  {daysOverdue > 0 ? ` (${daysOverdue} days overdue)` : ""}
+                  Due: {dueDisplay}
+                  {overdueLabel}
                 </ThemedText>
 
                 {payment.notes ? (
@@ -199,14 +210,14 @@ export default function ApprovalsScreen() {
                   </ThemedText>
                 ) : null}
 
-                <Pressable
-                  style={[styles.approveButton, { backgroundColor: "#28a745" }]}
+                <ScalePressable
+                  style={[styles.approveButton, { backgroundColor: "#10B981" }]}
                   onPress={() => handleApprove(payment.id, payment.tenantName)}
                 >
                   <ThemedText style={styles.approveButtonText}>
                     Approve Payment
                   </ThemedText>
-                </Pressable>
+                </ScalePressable>
               </View>
             );
           })
